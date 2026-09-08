@@ -14,6 +14,10 @@
   --radius: 12px;
   --shadow: 0 8px 30px rgba(0, 0, 0, .45);
   --panel-w: 400px;
+  /* How much of the panel is actually on screen. TT.panel keeps these current
+     as the panel is dragged, so the map and the floating chrome can follow it. */
+  --panel-visible: 400px;
+  --sheet-h: 0px;
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
 }
@@ -50,11 +54,16 @@ a { color: var(--accent); }
 #app { position: relative; height: 100%; width: 100%; overflow: hidden; }
 
 /* ---------- map ---------- */
+/* The map fills whatever the panel is not using, so sliding the panel away
+   genuinely gives the map the whole window rather than hiding it underneath. */
 #map {
   position: absolute;
-  inset: 0 0 0 var(--panel-w);
+  inset: 0 0 0 var(--panel-visible);
   background: var(--bg);
+  transition: left .28s cubic-bezier(.22,.61,.36,1);
 }
+/* While a finger is down the map must track the panel exactly, with no easing. */
+:root[data-panel-dragging] #map { transition: none; }
 .leaflet-container { background: var(--bg); font: inherit; }
 .leaflet-control-attribution {
   background: rgba(20, 22, 26, .72) !important;
@@ -127,6 +136,18 @@ a { color: var(--accent); }
   border-style: solid;
   border-color: var(--accent);
 }
+/* The wrapper is a fixed square and centres whatever it holds, so a picture pin
+   that falls back to the "w" dot does not jump. */
+.tt-pin-wrap-wiki { display: flex; align-items: center; justify-content: center; }
+.tt-pin-wiki.has-img {
+  width: 24px; height: 24px;
+  padding: 0; overflow: hidden;
+  background: var(--panel-2);
+  border: 1.5px solid rgba(255, 255, 255, .75);
+  box-shadow: 0 2px 7px rgba(0, 0, 0, .5);
+}
+.tt-pin-wiki.has-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tt-pin-wiki.has-img:hover { transform: scale(1.35); }
 .tt-me {
   display: block; width: 14px; height: 14px; margin: 2px;
   border-radius: 50%;
@@ -144,7 +165,7 @@ a { color: var(--accent); }
 /* ---------- top bar ---------- */
 #topbar {
   position: absolute;
-  top: 14px; left: calc(var(--panel-w) + 14px); right: 14px;
+  top: 14px; left: calc(var(--panel-visible) + 14px); right: 14px;
   z-index: 700;
   display: flex; align-items: center; gap: 10px;
   pointer-events: none;
@@ -199,7 +220,7 @@ a { color: var(--accent); }
 .pill-sq { padding: 9px 12px; font-weight: 600; font-size: 12px; letter-spacing: .05em; }
 
 .status {
-  position: absolute; top: 66px; left: calc(var(--panel-w) + 14px);
+  position: absolute; top: 66px; left: calc(var(--panel-visible) + 14px);
   z-index: 690;
   background: var(--panel); border: 1px solid var(--line);
   border-left: 3px solid var(--me);
@@ -216,22 +237,34 @@ a { color: var(--accent); }
   border-right: 1px solid var(--line);
   display: flex; flex-direction: column;
   box-shadow: var(--shadow);
-  transition: transform .25s ease;
 }
-#panel.collapsed { transform: translateX(calc(-1 * var(--panel-w) + 16px)); }
+/* Position is driven by TT.panel. Transitions only while settling to a snap,
+   never while a finger is on the handle. */
+#panel.animating { transition: transform .28s cubic-bezier(.22,.61,.36,1), height .28s cubic-bezier(.22,.61,.36,1); }
+#panel.dragging { transition: none; user-select: none; }
+#panel.dragging * { user-select: none; }
 
 #panel-handle {
-  position: absolute; right: -14px; top: 50%;
-  width: 14px; height: 60px; transform: translateY(-50%);
+  position: absolute; right: -18px; top: 50%;
+  width: 18px; height: 76px; transform: translateY(-50%);
   background: var(--panel); border: 1px solid var(--line); border-left: 0;
-  border-radius: 0 8px 8px 0; cursor: pointer; padding: 0;
+  border-radius: 0 9px 9px 0; padding: 0;
+  cursor: ew-resize; touch-action: none;
   display: flex; align-items: center; justify-content: center;
   z-index: 2;
 }
 #panel-handle span {
-  width: 3px; height: 22px; border-radius: 2px; background: var(--text-faint);
+  width: 3px; height: 26px; border-radius: 2px; background: var(--text-faint);
+  transition: background .15s, height .15s;
 }
-#panel-handle:hover span { background: var(--accent); }
+#panel-handle:hover span, #panel-handle:focus-visible span { background: var(--accent); height: 34px; }
+#panel-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#panel.dragging #panel-handle span { background: var(--accent); }
+
+/* When the sidebar is pushed away, the handle is all that is left — make it
+   obvious that it is still there and grabbable. */
+#panel[data-snap="hidden"] #panel-handle { background: var(--accent); border-color: var(--accent); }
+#panel[data-snap="hidden"] #panel-handle span { background: var(--accent-ink); }
 
 /* active trail strip */
 .active-trail {
@@ -364,6 +397,17 @@ a { color: var(--accent); }
 .switch-row { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
 .switch { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--text-dim); }
 .switch input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+
+/* Voice picker, indented under the narration switch it belongs to. */
+.voice-row { display: flex; align-items: center; gap: 7px; margin: -2px 0 2px 23px; }
+.voice-select {
+  flex: 1; min-width: 0;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 6px 8px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.voice-select:hover { border-color: var(--accent); }
+.voice-row .btn { flex: none; }
 
 /* ---------- place list ---------- */
 .list-head {
@@ -540,14 +584,27 @@ h4.sec-alt { color: var(--me); }
 
 .wiki-near { display: flex; flex-direction: column; gap: 1px; padding: 0 10px; }
 .wiki-near-item {
-  display: flex; align-items: baseline; gap: 8px; width: 100%;
-  background: none; border: 0; border-radius: 7px; padding: 7px 10px;
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  background: none; border: 0; border-radius: 7px; padding: 6px 10px;
   cursor: pointer; text-align: left;
 }
 .wiki-near-item:hover { background: var(--panel-2); }
-.wn-name { font-size: 12.5px; }
-.wn-desc { font-size: 10.5px; color: var(--text-faint); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wn-dist { font-size: 10.5px; color: var(--text-faint); }
+.wn-thumb {
+  flex: none; width: 38px; height: 38px; border-radius: 6px;
+  overflow: hidden; background: var(--panel-2);
+  border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+}
+.wn-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wn-thumb.is-empty { border-style: dashed; }
+.wn-thumb.is-empty i {
+  font-style: normal; font-size: 12px; font-weight: 700; color: var(--text-faint);
+}
+.wiki-near-item:hover .wn-thumb { border-color: var(--accent); }
+.wn-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.wn-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wn-desc { font-size: 10.5px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wn-dist { flex: none; font-size: 10.5px; color: var(--text-faint); }
 
 .detail-foot { display: flex; gap: 7px; padding: 22px 16px 0; }
 
@@ -565,10 +622,10 @@ h4.sec-alt { color: var(--me); }
 
 /* ---------- spoken guide player ---------- */
 .player {
-  position: absolute; left: calc(var(--panel-w) + 14px); bottom: 22px;
+  position: absolute; left: calc(var(--panel-visible) + 14px); bottom: 22px;
   z-index: 880;
   display: flex; align-items: center; gap: 10px;
-  width: min(420px, calc(100vw - var(--panel-w) - 40px));
+  width: min(420px, calc(100vw - var(--panel-visible) - 40px));
   background: var(--panel); border: 1px solid var(--line);
   border-left: 3px solid var(--me);
   border-radius: var(--radius); box-shadow: var(--shadow);
@@ -705,43 +762,46 @@ h4.sec-trivia { color: var(--accent); }
   .topbar-actions { margin-left: auto; }
   .pill { padding: 7px 12px; font-size: 12px; }
 
-  .status { top: auto; bottom: 50vh; left: 10px; right: 10px; }
+  .status { top: auto; bottom: calc(var(--sheet-h, 52vh) + 10px); left: 10px; right: 10px; }
 
+  /* Bottom sheet. Its height is driven by TT.panel, between a peek and
+     nearly full screen, so the map or the panel can own the display. */
   #panel {
     top: auto; bottom: 0; left: 0; right: 0;
-    width: 100%; height: 52vh;
+    width: 100%; height: var(--sheet-h, 52vh);
     border-right: 0; border-top: 1px solid var(--line);
     border-radius: 16px 16px 0 0;
-    transition: transform .28s ease;
+    transform: none !important;
   }
-  #panel.collapsed { transform: translateY(calc(52vh - 92px)); }
 
   #panel-handle {
-    right: auto; top: 0; left: 50%;
-    transform: translateX(-50%);
-    width: 60px; height: 18px;
+    right: auto; top: 0; left: 0;
+    transform: none;
+    width: 100%; height: 26px;
     border: 0; border-radius: 16px 16px 0 0;
     background: none;
+    cursor: ns-resize;
   }
-  #panel-handle span { width: 34px; height: 4px; }
+  #panel-handle span { width: 40px; height: 4px; }
+  #panel-handle:hover span, #panel-handle:focus-visible span { height: 5px; width: 52px; }
+  /* The sidebar's "hidden" styling does not apply to a sheet. */
+  #panel[data-snap="hidden"] #panel-handle,
+  #panel[data-snap="peek"] #panel-handle { background: none; border: 0; }
+  #panel[data-snap="peek"] #panel-handle span { background: var(--accent); }
 
-  .arrival { right: 10px; left: 10px; bottom: calc(52vh + 12px); width: auto; }
-  .toast { bottom: calc(52vh + 12px); }
-  .player { left: 10px; right: 10px; width: auto; bottom: calc(52vh + 12px); }
-  #panel.collapsed ~ .toast,
-  #panel.collapsed ~ .arrival,
-  #panel.collapsed ~ .player { bottom: 104px; }
+  /* Overlays ride on top of the sheet, wherever the visitor has left it. */
+  .arrival { right: 10px; left: 10px; bottom: calc(var(--sheet-h, 52vh) + 12px); width: auto; }
+  .toast { bottom: calc(var(--sheet-h, 52vh) + 12px); }
+  .player { left: 10px; right: 10px; width: auto; bottom: calc(var(--sheet-h, 52vh) + 12px); }
   /* Keep the player and a toast from landing on top of each other. */
-  .player:not([hidden]) ~ .toast { bottom: calc(52vh + 84px); }
+  .player:not([hidden]) ~ .toast { bottom: calc(var(--sheet-h, 52vh) + 84px); }
 
   .detail-img { height: 140px; }
 }
 
 @media (max-width: 460px) {
   .brand-text { display: none; }
-  #panel { height: 58vh; }
-  #panel.collapsed { transform: translateY(calc(58vh - 92px)); }
-  .arrival, .toast { bottom: calc(58vh + 12px); }
+  /* Height and overlay offsets already follow --sheet-h; nothing to override. */
 }
 
 @media (prefers-reduced-motion: reduce) {

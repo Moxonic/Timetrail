@@ -313,6 +313,21 @@
     });
   }
 
+  /* A line to judge a voice by. Deliberately a real one from the tour: it puts
+   * a Norwegian place name inside an English sentence, which is exactly where
+   * voices differ most. */
+  function previewVoice() {
+    var lang = state().lang;
+    TT.audio.play({
+      id: 'voice-preview',
+      title: 'Voice preview',
+      lang: lang,
+      text: lang === 'no'
+        ? 'Akershus festning. Borgen Oslo vokste opp rundt, reist rundt tretten hundre.'
+        : 'Akershus Fortress. The castle Oslo grew up around, raised about thirteen hundred.'
+    });
+  }
+
   /* Hands-free tour: read out whatever we have just come near. */
   function narrateSurroundings() {
     if (!state().autoNarrate || !here) return;
@@ -514,6 +529,15 @@
         TT.ui.toast('Following ' + TT.themeById(themeId).name.toLowerCase() + ' across every period.');
       },
       onListen: function (place) { narrate(place, 'play'); },
+      onVoicePick: function (uri) {
+        var prefs = Object.assign({}, state().voicePrefs);
+        if (uri) prefs[state().lang] = uri; else delete prefs[state().lang];
+        store.set({ voicePrefs: prefs }, 'audio');
+        TT.audio.setVoice(prefs);
+        // Choosing a voice is a request to hear it.
+        previewVoice();
+      },
+      onVoicePreview: previewVoice,
       onNarrateToggle: function (on) {
         store.set({ autoNarrate: on }, 'audio');
         if (!on) {
@@ -548,6 +572,7 @@
         store.set({ lang: next }, 'lang');
         TT.ui.setLang(next);
         wikiCache = [];
+        TT.ui.renderVoicePicker(next, state().voicePrefs[next]);
         refreshWiki();
         if (currentModel) select(state().selected, 'lang');
         TT.ui.toast(next === 'no' ? 'Reading Norwegian Wikipedia.' : 'Reading English Wikipedia.');
@@ -570,8 +595,14 @@
     TT.ui.dom().narrateToggle.checked = false;
     store.set({ autoNarrate: false }, 'audio');
 
-    TT.audio.subscribe(function (st) { TT.ui.renderPlayer(st); });
+    TT.audio.subscribe(function (st) {
+      TT.ui.renderPlayer(st);
+      // Voices arrive asynchronously in Chrome, so the picker fills in late.
+      TT.ui.renderVoicePicker(state().lang, state().voicePrefs[state().lang]);
+    });
+    TT.audio.setVoice(s.voicePrefs || {});
     TT.audio.setRate(s.speechRate || 1);
+    TT.ui.renderVoicePicker(s.lang, (s.voicePrefs || {})[s.lang]);
 
     TT.map.init({
       center: s.center || TT.CITY.center,
@@ -580,6 +611,14 @@
       onSelect: select
     });
     TT.map.raw().on('moveend', refreshWiki);
+
+    // The panel is draggable; the map has to be told its viewport changed.
+    TT.panel.init({
+      onChange: function (snap) {
+        store.set({ panelSnap: snap }, 'panel');
+        TT.map.invalidate();
+      }
+    });
 
     store.subscribe(function (st, changed, reason) {
       if (changed.indexOf('eras') !== -1 || changed.indexOf('themes') !== -1 ||

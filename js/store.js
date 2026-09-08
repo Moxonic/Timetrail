@@ -23,9 +23,11 @@ TT.store = (function () {
     trivia: true,          // show the small details layer
     autoNarrate: false,    // read places aloud as I come near them
     speechRate: 1,         // narration speed
+    voicePrefs: {},        // lang -> voiceURI, when the visitor picked a voice
     showSpots: true,       // mark things you pass along a route
     center: null,          // last map centre, so a reload puts you back
     zoom: null,
+    panelSnap: null,       // where the visitor left the panel: open/hidden/peek/half/full
     cityName: TT.CITY ? TT.CITY.name : 'Oslo'
   };
 

@@ -51,12 +51,30 @@ TT.map = (function () {
     });
   }
 
-  function wikiIcon() {
+  /* Wikipedia markers wear the article's lead image, so a screenful of them
+   * reads as pictures of the place rather than identical dots. Articles with no
+   * image — and thumbnails that fail to load — fall back to the small "w" dot.
+   * The wrapper is a fixed 26px either way, so that fallback stays centred. */
+  function wikiIcon(r) {
+    var pin = TT.el('span.tt-pin.tt-pin-wiki');
+    function asDot() {
+      TT.clear(pin);
+      pin.classList.remove('has-img');
+      pin.appendChild(TT.el('i', { text: 'w' }));
+    }
+    if (r && r.thumb) {
+      pin.classList.add('has-img');
+      pin.appendChild(TT.el('img', {
+        src: r.thumb, alt: '', loading: 'lazy', decoding: 'async', onerror: asDot
+      }));
+    } else {
+      asDot();
+    }
     return L.divIcon({
-      className: 'tt-pin-wrap',
-      html: '<span class="tt-pin tt-pin-wiki"><i>w</i></span>',
-      iconSize: [20, 20],
-      iconAnchor: [10, 10]
+      className: 'tt-pin-wrap tt-pin-wrap-wiki',
+      html: pin,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13]
     });
   }
 
@@ -130,13 +148,13 @@ TT.map = (function () {
     wikiMarkers = {};
     records.forEach(function (r) {
       var m = L.marker([r.lat, r.lng], {
-        icon: wikiIcon(),
+        icon: wikiIcon(r),
         title: r.title,
         alt: r.title,
         zIndexOffset: -200
       });
       m.on('click', function () { onSelect(r.id, 'wiki', r); });
-      m.bindTooltip(r.title, { direction: 'top', offset: [0, -10], opacity: 0.9 });
+      m.bindTooltip(r.title, { direction: 'top', offset: [0, -14], opacity: 0.9 });
       m.addTo(layers.wiki);
       wikiMarkers[r.id] = m;
     });

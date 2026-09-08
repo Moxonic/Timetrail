@@ -35,6 +35,9 @@ TT.ui = (function () {
       unvisitedToggle: $('#unvisited-toggle'),
       triviaToggle: $('#trivia-toggle'),
       narrateToggle: $('#narrate-toggle'),
+      voiceRow: $('#voice-row'),
+      voiceSelect: $('#voice-select'),
+      voicePreview: $('#voice-preview'),
       player: $('#player'),
       playerTitle: $('#player-title'),
       playerSub: $('#player-sub'),
@@ -76,6 +79,12 @@ TT.ui = (function () {
     dom.narrateToggle.addEventListener('change', function () {
       H.onNarrateToggle && H.onNarrateToggle(dom.narrateToggle.checked);
     });
+    dom.voiceSelect.addEventListener('change', function () {
+      H.onVoicePick && H.onVoicePick(dom.voiceSelect.value);
+    });
+    dom.voicePreview.addEventListener('click', function () {
+      H.onVoicePreview && H.onVoicePreview();
+    });
 
     dom.playerToggle.addEventListener('click', function () { TT.audio.toggle(); });
     dom.playerNext.addEventListener('click', function () { TT.audio.next(); });
@@ -103,10 +112,7 @@ TT.ui = (function () {
       }
     });
 
-    $('#panel-handle').addEventListener('click', function () {
-      dom.panel.classList.toggle('collapsed');
-      TT.map.invalidate();
-    });
+    // The handle itself is owned by TT.panel — it is a drag surface, not a button.
 
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && dom.views.detail.classList.contains('active')) {
@@ -128,7 +134,11 @@ TT.ui = (function () {
       b.classList.toggle('active', on);
       b.setAttribute('aria-selected', on ? 'true' : 'false');
     });
-    dom.panel.classList.remove('collapsed');
+    // Switching tab implies wanting to read something, so make sure the panel
+    // is not tucked away — but never shrink it if it is already fully open.
+    var snap = TT.panel.state();
+    if (snap === 'peek') TT.panel.snapTo('half');
+    else if (snap === 'hidden') TT.panel.snapTo('open');
     dom.panel.scrollTop = 0;
     var body = dom.views[name];
     if (body) body.scrollTop = 0;
@@ -418,6 +428,25 @@ TT.ui = (function () {
   }
 
   /* ---------- detail view ---------- */
+
+  /* A small square of the article's lead image. Plenty of Wikipedia pages have
+   * none, so the placeholder has to look deliberate rather than broken — and a
+   * thumbnail whose URL fails to load falls back to it too. */
+  function wikiThumb(src) {
+    var box = el('span.wn-thumb');
+    function placeholder() {
+      clear(box);
+      box.classList.add('is-empty');
+      box.appendChild(el('i', { text: 'w' }));
+    }
+    if (!src) { placeholder(); return box; }
+    box.appendChild(el('img', {
+      src: src, alt: '', loading: 'lazy', decoding: 'async',
+      onerror: placeholder
+    }));
+    return box;
+  }
+
   function recCard(rec, kind) {
     var p = rec.place;
     var era = TT.primaryEra(p);
@@ -605,8 +634,11 @@ TT.ui = (function () {
         wn.appendChild(el('button.wiki-near-item', {
           onclick: function () { H.onSelect && H.onSelect(r.id, 'rec', r); }
         }, [
-          el('span.wn-name', { text: r.title }),
-          el('span.wn-desc', { text: r.description || '' }),
+          wikiThumb(r.thumb),
+          el('span.wn-text', {}, [
+            el('span.wn-name', { text: r.title }),
+            el('span.wn-desc', { text: r.description || '' })
+          ]),
           el('span.wn-dist', { text: TT.fmtDist(r.dist) })
         ]));
       });
@@ -678,6 +710,50 @@ TT.ui = (function () {
     dom.status.hidden = !text;
   }
 
+  /* The voice picker.
+   *
+   * Two reasons it exists: the device's voice list is wildly uneven between
+   * browsers, and which of the good ones sounds pleasant is taste. Rebuilt only
+   * when the list or the language actually changes — the audio module emits on
+   * every sentence, and swapping options underneath an open dropdown is rude. */
+  var voiceSig = null;
+
+  function renderVoicePicker(lang, chosen) {
+    if (!TT.audio.supported()) { dom.voiceRow.hidden = true; return; }
+    var list = TT.audio.listVoices(lang);
+    // One voice is not a choice, and none is a different problem, reported
+    // elsewhere. Either way the row is only clutter.
+    if (list.length < 2) { dom.voiceRow.hidden = true; return; }
+
+    var sig = lang + '|' + list.length + '|' + (chosen || '');
+    dom.voiceRow.hidden = false;
+    if (sig === voiceSig) return;
+    voiceSig = sig;
+
+    clear(dom.voiceSelect);
+    dom.voiceSelect.appendChild(new Option(
+      'Best voice on this device — ' + voiceLabel(list[0]), ''));
+    list.forEach(function (v) {
+      dom.voiceSelect.appendChild(new Option(voiceLabel(v), v.voiceURI));
+    });
+    dom.voiceSelect.value = chosen && list.some(function (v) { return v.voiceURI === chosen; })
+      ? chosen : '';
+  }
+
+  /* Names range from "Daniel" to "Microsoft Sonia Online (Natural) - English
+   * (United Kingdom)". Trim the noise, keep the locale, flag the good ones. */
+  function voiceLabel(v) {
+    var name = (v.name || 'Voice')
+      .replace(/^(Microsoft|Google|Apple)s+/i, '')
+      .replace(/s*-s*[^-]+([^)]*)s*$/, '')
+      .replace(/s*((Natural|Enhanced|Premium|Compact))/ig, '')
+      .trim();
+    var tag = (v.lang || '').replace('_', '-');
+    var nice = /natural|neural|premium|enhanced|siri/i.test(v.name + ' ' + v.voiceURI)
+      || v.localService === false;
+    return name + (tag ? ' · ' + tag : '') + (nice ? ' ✦' : '');
+  }
+
   function setLang(lang) {
     dom.langBtn.textContent = lang === 'no' ? 'NO' : 'EN';
     dom.langBtn.title = lang === 'no'
@@ -727,6 +803,7 @@ TT.ui = (function () {
     renderEraChips: renderEraChips, renderThemeChips: renderThemeChips, syncTimeline: syncTimeline,
     renderList: renderList, renderTrails: renderTrails, renderActiveTrail: renderActiveTrail,
     renderItinerary: renderItinerary, renderPlayer: renderPlayer,
+    renderVoicePicker: renderVoicePicker,
     renderDetail: renderDetail, renderSearch: renderSearch,
     setWalkState: setWalkState, setStatus: setStatus, setLang: setLang, setTheme: setTheme,
     toast: toast, arrival: arrival,

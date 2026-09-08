@@ -38,7 +38,8 @@
 
   <!-- ---------- Side panel ---------- -->
   <aside id="panel">
-    <button id="panel-handle" aria-label="Collapse or expand the panel"><span></span></button>
+    <button id="panel-handle" type="button" aria-expanded="true"
+            aria-controls="panel" aria-label="Drag to resize the panel"><span></span></button>
 
     <div id="active-trail" class="active-trail" hidden></div>
 
@@ -88,6 +89,10 @@
             <input id="narrate-toggle" type="checkbox">
             <span>Read places aloud as I walk</span>
           </label>
+          <div id="voice-row" class="voice-row" hidden>
+            <select id="voice-select" class="voice-select" aria-label="Narration voice"></select>
+            <button id="voice-preview" class="btn btn-sm btn-ghost" type="button">Hear it</button>
+          </div>
           <label class="switch">
             <input id="unvisited-toggle" type="checkbox">
             <span>Hide places I have already seen</span>
@@ -139,7 +144,7 @@
     <button id="player-stop" class="pbtn" title="Stop reading">✕</button>
   </div>
 
-  <!-- Overlays sit after the panel so `#panel.collapsed ~ …` can reposition them. -->
+  <!-- Overlays sit after the panel so sibling selectors can reposition them. -->
   <div id="status" class="status" hidden></div>
   <div id="arrival" class="arrival" hidden></div>
   <div id="toast" class="toast" hidden></div>
@@ -156,6 +161,7 @@
 <script src="js/route.js"></script>
 <script src="js/recommend.js"></script>
 <script src="js/map.js"></script>
+<script src="js/panel.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/app.js"></script>
 </body>

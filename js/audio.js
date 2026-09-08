@@ -23,12 +23,15 @@ TT.audio = (function () {
   var listeners = [];
   var keepAlive = null;
   var rate = 1;
+  var prefs = {};          // lang -> voiceURI the visitor picked; absent = automatic
+  var ranked = {};         // lang -> voices, best first (cleared when the set changes)
 
   function supported() { return !!synth && typeof SpeechSynthesisUtterance === 'function'; }
 
   function loadVoices() {
     if (!supported()) return;
     voices = synth.getVoices() || [];
+    ranked = {};
   }
   if (supported()) {
     loadVoices();
@@ -37,17 +40,80 @@ TT.audio = (function () {
     }
   }
 
-  /* Pick the closest voice for a language, preferring an exact locale. */
-  function voiceFor(lang) {
-    if (!voices.length) loadVoices();
-    var want = lang === 'no' ? ['nb-no', 'nn-no', 'no'] : ['en-gb', 'en-us', 'en'];
+  /* How well a voice fits the language. Null means it is not a candidate.
+   * British English is preferred for an Oslo guide, but only mildly: a natural
+   * American voice should still beat a robotic British one. */
+  function localeScore(v, lang) {
+    var tag = (v.lang || '').toLowerCase().replace('_', '-');
+    var want = lang === 'no'
+      ? [['nb-no', 100], ['no', 95], ['nn-no', 70]]
+      : [['en-gb', 100], ['en-us', 85], ['en', 70]];
     for (var i = 0; i < want.length; i++) {
-      var hit = voices.find(function (v) {
-        return v.lang && v.lang.toLowerCase().replace('_', '-').indexOf(want[i]) === 0;
-      });
-      if (hit) return hit;
+      if (tag.indexOf(want[i][0]) === 0) return want[i][1];
     }
     return null;
+  }
+
+  /* The API exposes no quality field, so infer one. These signals are indirect
+   * but they hold across browsers: the natural-sounding voices are the
+   * cloud-served ones, and every vendor advertises them in the name. Edge's
+   * "Online (Natural)" set and Apple's Enhanced/Premium downloads are both
+   * free — they are simply never first in getVoices(), which is why picking
+   * the first locale match used to leave us with the 1990s robot. */
+  var HINTS = [
+    [/natural|neural/, 60],
+    [/premium|enhanced/, 45],
+    [/siri/, 45],
+    [/online/, 35],
+    [/^google/, 30],
+    [/espeak/, -60],
+    [/compact/, -45]
+  ];
+
+  function scoreVoice(v, lang) {
+    var base = localeScore(v, lang);
+    if (base == null) return null;
+    var name = ((v.name || '') + ' ' + (v.voiceURI || '')).toLowerCase();
+    HINTS.forEach(function (h) { if (h[0].test(name)) base += h[1]; });
+    // Where an engine offers both, the remote voice is the neural one.
+    if (v.localService === false) base += 25;
+    return base;
+  }
+
+  /* Every usable voice for a language, best-sounding first. */
+  function listVoices(lang) {
+    // Voices arrive late, and Safari has never been dependable about firing
+    // onvoiceschanged, so notice the list growing rather than trusting the event.
+    var live = supported() ? (synth.getVoices() || []) : [];
+    if (live.length !== voices.length || (live[0] && live[0] !== voices[0])) loadVoices();
+    if (ranked[lang]) return ranked[lang];
+    var scored = [];
+    voices.forEach(function (v) {
+      var s = scoreVoice(v, lang);
+      if (s != null) scored.push({ v: v, s: s });
+    });
+    scored.sort(function (a, b) { return b.s - a.s; });
+    ranked[lang] = scored.map(function (x) { return x.v; });
+    return ranked[lang];
+  }
+
+  /* What the visitor chose, if it is still installed; otherwise our best guess. */
+  function voiceFor(lang) {
+    var list = listVoices(lang);
+    var want = prefs[lang];
+    if (want) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].voiceURI === want) return list[i];
+      }
+    }
+    return list[0] || null;
+  }
+
+  /* prefs is the whole map, { en: voiceURI, no: voiceURI }; empty = automatic. */
+  function setVoice(next) {
+    prefs = next || {};
+    restartCurrent();
+    emit();
   }
 
   function hasVoiceFor(lang) { return !!voiceFor(lang); }
@@ -237,17 +303,21 @@ TT.audio = (function () {
 
   function stop() { cancel(); queue = []; emit(); }
 
+  /* Apply a change in how we sound without waiting for the next place: re-speak
+   * the sentence in progress. The cancel lands as an 'interrupted' error, which
+   * speakChunk already knows to ignore. */
+  function restartCurrent() {
+    if (!playing || !current) return;
+    var item = current, resumeAt = current.index;
+    synth.cancel();
+    current = item;
+    current.index = resumeAt;
+    setTimeout(speakChunk, 60);
+  }
+
   function setRate(r) {
     rate = TT.clamp(r, 0.6, 1.6);
-    // Apply immediately by restarting the sentence in progress.
-    if (playing && current) {
-      var resumeAt = current.index;
-      var item = current;
-      synth.cancel();
-      current = item;
-      current.index = resumeAt;
-      setTimeout(speakChunk, 60);
-    }
+    restartCurrent();
     emit();
   }
 
@@ -260,6 +330,7 @@ TT.audio = (function () {
 
   return {
     supported: supported, hasVoiceFor: hasVoiceFor, voiceFor: voiceFor,
+    listVoices: listVoices, setVoice: setVoice,
     play: play, enqueue: enqueue, pause: pause, resume: resume, toggle: toggle,
     next: next, stop: stop, setRate: setRate,
     hasSpoken: hasSpoken, forget: forget,

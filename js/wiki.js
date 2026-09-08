@@ -186,7 +186,9 @@ TT.wiki = (function () {
       ggslimit: limit,
       prop: 'coordinates|pageimages|description',
       piprop: 'thumbnail',
-      pithumbsize: 320
+      // Sized for the map pin and the list row, not for a hero image: fifty of
+      // these load at once every time the map moves.
+      pithumbsize: 160
     }).then(function (j) {
       var pages = (j.query && j.query.pages) || {};
       var out = Object.keys(pages).map(function (pid) {
