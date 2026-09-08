@@ -144,9 +144,14 @@ routing, progress — picks it up automatically.
   the Wikipedia extract shown beneath each one, linked to its source. A few entries point
   at articles that may have been renamed — those fall back to a Wikipedia search, and the
   app says so when it does.
-- **Tiles** come from CARTO's free basemaps, **routing** from the FOSSGIS Valhalla
-  instance, and **geocoding** from OSM Nominatim. All three are fine at personal scale but
-  have usage policies if you deploy this publicly — run your own instances if you do.
+- **No API keys, accounts or tokens.** Nothing here needs one: map tiles come from
+  CARTO's free basemaps, pedestrian routing from the public FOSSGIS Valhalla instance,
+  geocoding from OSM Nominatim, and article text from Wikipedia's open API. Clone it and
+  it runs. All four are shared public services with fair-use policies, so if you ever
+  deploy this at scale, host your own — but nothing is gated behind a signup, and if a
+  service does refuse a request the app degrades instead of breaking: routing falls back
+  to straight-line estimates marked "estimated", and Wikipedia failures leave the curated
+  text in place.
 - **Voices** come from the operating system, not the app. Windows and macOS both ship an
   English voice; a Norwegian one may need to be added in system settings. Without it, the
   Norwegian text is read by whatever voice is available, which sounds wrong. Speech is

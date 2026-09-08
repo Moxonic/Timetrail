@@ -88,6 +88,11 @@ TT.route = (function () {
         return r.json();
       })
       .then(function (json) {
+        // Valhalla can answer 200 with an error payload (rate limit, bad input,
+        // or a future key requirement). Treat that as a failure, not a route.
+        if (json && (json.error || json.error_code)) {
+          throw new Error('routing: ' + (json.error || json.error_code));
+        }
         var trip = json && json.trip;
         if (!trip || !trip.legs || !trip.legs.length) throw new Error('no route');
 
