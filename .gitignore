@@ -1,0 +1,12 @@
+# Nothing is built or installed — this is a zero-dependency static app.
+node_modules/
+npm-debug.log*
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local Claude Code settings (machine-specific permissions)
+.claude/settings.local.json
