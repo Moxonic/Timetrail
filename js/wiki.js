@@ -307,18 +307,70 @@ TT.wiki = (function () {
       var byTitle = {};
       Object.keys(pages).forEach(function (k) { byTitle[pages[k].title] = pages[k]; });
 
+      var noLead = [];
       batch.forEach(function (t) {
         var seen = {}, cur = t;
         while (hop[cur] && !seen[cur]) { seen[cur] = 1; cur = hop[cur]; }
         var pg = byTitle[cur];
         var url = (pg && pg.thumbnail && pg.thumbnail.source) || null;
-        out[t] = url;
-        store('thumb:' + lang + ':' + t, url);
+        if (url) {
+          out[t] = url;
+          store('thumb:' + lang + ':' + t, url);
+        } else if (pg && pg.missing === undefined) {
+          // A real page that simply has no lead image — worth a second look.
+          noLead.push(t);
+        } else {
+          out[t] = null;
+          store('thumb:' + lang + ':' + t, null);
+        }
       });
+      return firstPhoto(noLead, lang, out);
     }).catch(function () {
       // A failed request is not an answer — leave it uncached so a later pan retries.
       batch.forEach(function (t) { out[t] = null; });
     });
+  }
+
+  /* Page furniture: things an article carries that are not pictures of it.
+   * Most are SVG and caught by the mime test below, but logos are often PNG. */
+  var FURNITURE = /logo|icon|symbol|flag|coat[ _]of[ _]arms|locator|location[ _]map|commons|wiktionary|disambig|ambox|stub|edit-|increase|decrease|padlock|question|wikidata/i;
+
+  /* Wikipedia only designates a lead image when an infobox or a picture at the
+   * top of the page makes the choice obvious, so an article can be full of
+   * photographs and still answer "no image". Steen & Strøm is the case in
+   * point: a fine photograph of the 1900s shopfront, and an empty pageimage.
+   *
+   * For those pages, take the largest real photograph instead. One request per
+   * page, but only ever for a page that came back empty, and the answer is
+   * cached like any other — so a pin costs this once and never again. */
+  function firstPhoto(titles, lang, out) {
+    if (!titles.length) return null;
+    return Promise.all(titles.map(function (t) {
+      return api(lang, {
+        action: 'query', generator: 'images', gimlimit: 50, redirects: 1, titles: t,
+        prop: 'imageinfo', iiprop: 'url|mime|size', iiurlwidth: 240
+      }).then(function (j) {
+        var pages = (j.query && j.query.pages) || {};
+        var best = null;
+        Object.keys(pages).forEach(function (k) {
+          var pg = pages[k];
+          var info = pg.imageinfo && pg.imageinfo[0];
+          if (!info || !info.thumburl) return;
+          if (!/^image\/(jpeg|png|webp)$/.test(info.mime || '')) return;
+          if (FURNITURE.test(pg.title || '')) return;
+          // Biggest wins: the photograph of the place beats a stray badge.
+          var area = (info.width || 0) * (info.height || 0);
+          if (!best || area > best.area) best = { url: info.thumburl, area: area, w: info.width };
+        });
+        // A tiny image is a badge we failed to name, not a photograph.
+        var url = (best && best.w >= 200) ? best.url : null;
+        out[t] = url;
+        store('thumb:' + lang + ':' + t, url);
+      }).catch(function () {
+        // Leave it uncached, as thumbBatch does, so a later pan can retry.
+        out[t] = null;
+      });
+    }));
   }
 
   /* Live geosearch — the "something interesting just popped up" feature.

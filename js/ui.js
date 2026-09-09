@@ -17,6 +17,7 @@ TT.ui = (function () {
         detail: $('#view-detail')
       },
       eraChips: $('#era-chips'),
+      eraSummary: $('#era-summary'),
       themeChips: $('#theme-chips'),
       list: $('#place-list'),
       listCount: $('#list-count'),
@@ -36,17 +37,25 @@ TT.ui = (function () {
       triviaToggle: $('#trivia-toggle'),
       narrateToggle: $('#narrate-toggle'),
       playerVoice: $('#player-voice'),
+      playerRate: $('#player-rate'),
       voiceMenu: $('#voice-menu'),
+      voiceBtn: $('#voice-btn'),
+      voiceMenuTop: $('#voice-menu-top'),
+
+      voiceRow: $('#voice-row'),
+      voiceSelect: $('#voice-select'),
+      voicePreview: $('#voice-preview'),
+
       player: $('#player'),
       playerTitle: $('#player-title'),
       playerSub: $('#player-sub'),
       playerFill: $('#player-fill'),
       playerToggle: $('#player-toggle'),
+      playerRefresh: $('#player-refresh'),
       playerNext: $('#player-next'),
       playerChapters: $('#player-chapters'),
       chapterMenu: $('#chapter-menu'),
 
-      playerStop: $('#player-stop'),
       search: $('#search'),
       searchResults: $('#search-results'),
       status: $('#status')
@@ -87,24 +96,49 @@ TT.ui = (function () {
       if (TT.audio.status().playing) TT.audio.toggle();
       else H.onListen && H.onListen();
     });
+    // Re-point the player at the pin currently selected on the map: switch to a
+    // place picked mid-reading, or restart the one already playing.
+    dom.playerRefresh.addEventListener('click', function () {
+      H.onListen && H.onListen();
+    });
+    dom.voiceSelect.addEventListener('change', function () {
+      H.onVoicePick && H.onVoicePick(dom.voiceSelect.value);
+    });
+    dom.voicePreview.addEventListener('click', function () {
+      H.onVoicePreview && H.onVoicePreview();
+    });
     dom.playerVoice.addEventListener('click', function (e) {
       e.stopPropagation();
-      toggleVoiceMenu();
+      toggleVoiceMenu(dom.voiceMenu, dom.playerVoice);
     });
+    dom.voiceBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleVoiceMenu(dom.voiceMenuTop, dom.voiceBtn);
+    });
+    // One tap for the next speed up, which is what a speed control is for while
+    // walking; the menu has the full set for choosing deliberately.
+    dom.playerRate.addEventListener('click', function () {
+      H.onRateCycle && H.onRateCycle();
+    });
+
     dom.playerChapters.addEventListener('click', function (e) {
       e.stopPropagation();
       toggleChapterMenu();
     });
     document.addEventListener('click', function (e) {
-      if (dom.player.contains(e.target)) return;
-      if (!dom.voiceMenu.hidden) closeVoiceMenu();
-      if (!dom.chapterMenu.hidden) closeChapterMenu();
+      if (!dom.chapterMenu.hidden && !dom.player.contains(e.target)) closeChapterMenu();
+      // The voice menu has two homes, one of them outside the player, so it
+      // asks its own opener rather than assuming where the click landed.
+      if (openMenu && !openMenu.box.contains(e.target) && !openMenu.btn.contains(e.target)) {
+        closeVoiceMenu();
+      }
     });
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
-      if (!dom.voiceMenu.hidden) { closeVoiceMenu(); dom.playerVoice.focus(); }
+      if (openMenu) { var btn = openMenu.btn; closeVoiceMenu(); btn.focus(); }
       if (!dom.chapterMenu.hidden) { closeChapterMenu(); dom.playerChapters.focus(); }
     });
+
 
     // Inside an article, skipping means the next chapter; the queue of other
     // places is only reached once the article has run out of them.
@@ -113,7 +147,6 @@ TT.ui = (function () {
       else TT.audio.next();
     });
 
-    dom.playerStop.addEventListener('click', function () { TT.audio.stop(); });
     $('#reset-filters').addEventListener('click', function () {
       TT.store.resetFilters();
       renderEraChips(); renderThemeChips(); syncTimeline();
@@ -192,6 +225,14 @@ TT.ui = (function () {
         el('span.chip-years', { text: TT.fmtSpan(era.from, era.to).replace(' – ', '–') })
       ]));
     });
+
+    // The collapsed picker has to say what it is filtering to, or closing it
+    // hides the fact that the list below is filtered at all.
+    var picked = TT.ERAS.filter(function (e) { return state.eras.indexOf(e.id) !== -1; });
+    dom.eraSummary.textContent =
+      picked.length === 0 ? 'All periods'
+      : picked.length === 1 ? picked[0].name
+      : picked.length + ' periods';
   }
 
   function renderThemeChips() {
@@ -741,22 +782,34 @@ TT.ui = (function () {
    * it appears on selecting a place rather than only once audio starts — the
    * play button is the "listen" button, so it has to be there before you listen.
    */
-  var listenTarget = null;   // the selected place, i.e. what play would read
+  var listenTarget = null;   // { id, name } of the selected place — what play would read
 
   function setListenTarget(place) {
-    listenTarget = place ? (place.name || place.title || null) : null;
+    listenTarget = place
+      ? { id: place.id, name: place.name || place.title || null }
+      : null;
     renderPlayer(TT.audio.status());
   }
 
   function renderPlayer(s) {
+    // The top-bar button and its menu sit outside the player and have to stay
+    // right whether or not it is showing, so they are settled before the
+    // early return below rather than after it.
+    dom.voiceBtn.hidden = !s.supported;
+    markMenuRate(s.rate);
+
     var busy = s.playing || !!s.title;
     // With nothing to read and no voice to read it, the player has no purpose.
-    if (!busy && (!listenTarget || !s.supported)) {
+    if (!busy && (!listenTarget || !listenTarget.name || !s.supported)) {
       dom.player.hidden = true;
-      closeVoiceMenu();
+      // Only the menu that hangs off the player goes with it. The top-bar one
+      // is meant to be used with the player hidden, and every speed pick emits
+      // a status change through here — closing it would shut it on first use.
+      if (openMenu && openMenu.box === dom.voiceMenu) closeVoiceMenu();
       closeChapterMenu();
       return;
     }
+
 
     dom.player.hidden = false;
     dom.player.classList.toggle('is-idle', !busy);
@@ -777,18 +830,32 @@ TT.ui = (function () {
       dom.playerFill.style.width = s.total
         ? Math.round(100 * s.progress / s.total) + '%' : '0%';
     } else {
-      dom.playerTitle.textContent = listenTarget;
+      dom.playerTitle.textContent = listenTarget.name;
       dom.playerToggle.textContent = '▶';
       dom.playerToggle.title = 'Read this aloud';
       dom.playerSub.textContent = 'Read this place aloud';
       dom.playerFill.style.width = '0%';
     }
 
+    // Refresh: re-point the player at the pin selected on the map. It lights up
+    // when that has moved on from what is playing, so it reads as "jump to the
+    // new place"; when they already match it simply restarts the reading.
+    var stale = busy && listenTarget && listenTarget.id != null &&
+                listenTarget.id !== s.id;
+    dom.playerRefresh.hidden = !busy;
+    dom.playerRefresh.classList.toggle('is-sync', stale);
+    dom.playerRefresh.title = stale
+      ? 'Switch to “' + listenTarget.name + '”, selected on the map'
+      : 'Restart this reading from the top';
+
     // Skip needs somewhere to skip to: another chapter, or another place.
     dom.playerNext.hidden = !busy || (!s.queued && !s.moreChapters);
     dom.playerNext.title = s.moreChapters ? 'Skip to the next chapter' : 'Skip to the next one';
-    dom.playerStop.hidden = !busy;
     dom.playerVoice.hidden = !s.supported;
+    dom.playerRate.hidden = !s.supported;
+    dom.playerRate.textContent = fmtRate(s.rate);
+    dom.playerRate.title = 'Reading at ' + fmtRate(s.rate) + ' — tap for the next speed';
+
 
     // One chapter is the whole reading, so the menu would offer nothing.
     var hasChapters = busy && s.chapters && s.chapters.length > 1;
@@ -901,41 +968,130 @@ TT.ui = (function () {
 
   function setVoiceState(lang, chosen) {
     voiceState = { lang: lang, chosen: chosen || '' };
-    if (!dom.voiceMenu.hidden) buildVoiceMenu();
+    if (openMenu) buildVoiceMenu();
+    renderVoicePicker();
+
   }
 
-  function toggleVoiceMenu() {
-    if (dom.voiceMenu.hidden) buildVoiceMenu(); else closeVoiceMenu();
+  /* The dropdown in Settings. It says the same thing as the menu on the player
+   * and both are driven from voiceState, but this one is always on screen —
+   * the player only appears once there is something to read, so without this
+   * there is no way to choose a voice before starting. */
+  var voiceSig = null;
+
+  function renderVoicePicker() {
+    if (!TT.audio.supported()) { dom.voiceRow.hidden = true; return; }
+    var lang = voiceState.lang;
+    var chosen = voiceState.chosen;
+    var list = TT.audio.listVoices(lang);
+    // One voice is not a choice, and none is a different problem, reported
+    // elsewhere. Either way the row is only clutter.
+    if (list.length < 2) { dom.voiceRow.hidden = true; return; }
+
+    dom.voiceRow.hidden = false;
+    // Voices arrive late in Chrome, so this runs again on every audio tick.
+    // Rebuilding the <select> under an open dropdown would be rude.
+    var sig = lang + '|' + list.length + '|' + chosen;
+    if (sig === voiceSig) return;
+    voiceSig = sig;
+
+    clear(dom.voiceSelect);
+    dom.voiceSelect.appendChild(new Option(
+      'Best voice on this device — ' + voiceLabel(list[0], true), ''));
+    list.forEach(function (v) {
+      dom.voiceSelect.appendChild(new Option(voiceLabel(v), v.voiceURI));
+    });
+    dom.voiceSelect.value = chosen && list.some(function (v) { return v.voiceURI === chosen; })
+      ? chosen : '';
+  }
+
+
+  /* One menu with two ways in: the button in the top bar, which is always there,
+   * and the one on the player, which is nearer to hand while something is being
+   * read. Both are built by the same code into their own box, anchored under or
+   * over whichever button opened it. `openMenu` is the one showing, so a click
+   * anywhere else can shut it and the audio module can keep it in step. */
+  var openMenu = null;
+
+  function menuHomes() {
+    return [
+      { box: dom.voiceMenu, btn: dom.playerVoice },
+      { box: dom.voiceMenuTop, btn: dom.voiceBtn }
+    ];
+  }
+
+  function toggleVoiceMenu(box, btn) {
+    if (openMenu && openMenu.box === box) closeVoiceMenu();
+    else openVoiceMenu(box, btn);
+  }
+
+  function openVoiceMenu(box, btn) {
+    closeVoiceMenu();
+    openMenu = { box: box, btn: btn };
+    buildVoiceMenu();
+    box.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
   }
 
   function closeVoiceMenu() {
-    dom.voiceMenu.hidden = true;
-    dom.playerVoice.setAttribute('aria-expanded', 'false');
+    menuHomes().forEach(function (m) {
+      m.box.hidden = true;
+      m.btn.setAttribute('aria-expanded', 'false');
+    });
+    openMenu = null;
   }
 
   function buildVoiceMenu() {
+    if (!openMenu) return;
+    var box = openMenu.box;
     var list = TT.audio.listVoices(voiceState.lang);
-    clear(dom.voiceMenu);
+    clear(box);
 
     if (!list.length) {
-      dom.voiceMenu.appendChild(el('div.voice-menu-head', {
+      box.appendChild(el('div.voice-menu-head', {
         text: voiceState.lang === 'no'
           ? 'No Norwegian voice on this device'
           : 'No voice on this device'
       }));
     } else {
-      dom.voiceMenu.appendChild(el('div.voice-menu-head', { text: 'Voice' }));
+      box.appendChild(el('div.voice-menu-head', { text: 'Voice' }));
       // The automatic row names its pick, but without the locale — the row is
       // the longest in the menu and that is the part it can afford to lose.
-      dom.voiceMenu.appendChild(voiceOption(
+      box.appendChild(voiceOption(
         '', 'Best available — ' + voiceLabel(list[0], true), !voiceState.chosen));
       list.forEach(function (v) {
-        dom.voiceMenu.appendChild(voiceOption(
+        box.appendChild(voiceOption(
           v.voiceURI, voiceLabel(v), voiceState.chosen === v.voiceURI));
       });
     }
-    dom.voiceMenu.hidden = false;
-    dom.playerVoice.setAttribute('aria-expanded', 'true');
+
+    // Speed belongs here too: the menu is then one place for how the narration
+    // sounds, rather than only for which voice it is in.
+    box.appendChild(el('div.voice-menu-head', { text: 'Speed' }));
+    var rate = TT.audio.status().rate;
+    var row = el('div.rate-row');
+    TT.audio.rates().forEach(function (r) {
+      row.appendChild(el('button.rate-opt' + (sameRate(r, rate) ? '.is-active' : ''), {
+        role: 'menuitemradio',
+        'data-rate': String(r),
+        title: 'Read at ' + fmtRate(r),
+        // Deliberately does not close: speeds are chosen by hearing them, and
+        // one tap per attempt with the menu reopened between is no way to judge.
+        onclick: function () { H.onRatePick && H.onRatePick(r); }
+      }, [fmtRate(r)]));
+    });
+    box.appendChild(row);
+  }
+
+  function sameRate(a, b) { return Math.abs(a - b) < 0.01; }
+  function fmtRate(r) { return r + '×'; }
+
+  /* Move the speed tick without rebuilding the menu under a finger. */
+  function markMenuRate(rate) {
+    if (!openMenu) return;
+    TT.$$('.rate-opt', openMenu.box).forEach(function (b) {
+      b.classList.toggle('is-active', sameRate(Number(b.getAttribute('data-rate')), rate));
+    });
   }
 
   function voiceOption(uri, label, active) {
@@ -950,6 +1106,7 @@ TT.ui = (function () {
       el('span.vo-name', { text: label })
     ]);
   }
+
 
   /* Names range from "Daniel" to "Microsoft Sonia Online (Natural) - English
    * (United Kingdom)". Trim the noise, keep the locale, flag the good ones. */
@@ -1016,6 +1173,8 @@ TT.ui = (function () {
     renderList: renderList, renderTrails: renderTrails, renderActiveTrail: renderActiveTrail,
     renderItinerary: renderItinerary, renderPlayer: renderPlayer,
     setListenTarget: setListenTarget, setVoiceState: setVoiceState,
+    renderVoicePicker: renderVoicePicker,
+
     renderDetail: renderDetail, renderSearch: renderSearch,
     setWalkState: setWalkState, setStatus: setStatus, setLang: setLang, setTheme: setTheme,
     toast: toast, arrival: arrival,

@@ -61,12 +61,25 @@ TT.audio = (function () {
    * free — they are simply never first in getVoices(), which is why picking
    * the first locale match used to leave us with the 1990s robot. */
   var GOOD = [
-    [/natural|neural/, 60],
+    [/natural|neural|wavenet|journey|multilingual/, 60],
     [/premium|enhanced/, 45],
     [/siri/, 45],
     [/online/, 35],
     [/^google/, 30]
   ];
+
+  /* And the ones to push down, which matters just as much. Every platform still
+   * ships something old: Windows keeps the SAPI "Desktop" voices, Linux and
+   * older Android fall back to eSpeak, and macOS carries a shelf of novelty
+   * voices from the 1980s. All of them answer to a locale as readily as a good
+   * voice does, so without this the automatic pick is a coin toss on exactly
+   * the browsers with the least to offer. */
+  var BAD = [
+    [/\bespeak|\bpico\b|festival|flite/, 80],
+    [/\bdesktop\b/, 55],
+    [/\b(albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|junior|kathy|princess|ralph|fred|agnes|victoria|bruce)\b/, 70]
+  ];
+
 
   function scoreVoice(v, lang) {
     var base = localeScore(v, lang);
@@ -78,7 +91,8 @@ TT.audio = (function () {
     });
     // Where an engine offers both, the remote voice is the neural one.
     if (v.localService === false) { base += 25; good = true; }
-    if (/espeak/.test(name)) base -= 60;
+    BAD.forEach(function (h) { if (h[0].test(name)) base -= h[1]; });
+
     // Apple's low-footprint voices — but the good Siri ones are also shipped
     // under a "...compact" URI, so this only demotes a voice with nothing
     // going for it otherwise.
@@ -417,11 +431,32 @@ TT.audio = (function () {
     setTimeout(speakChunk, 60);
   }
 
+  /* Speeds worth offering. 1.5 is the one people reach for — quick enough to get
+   * through a long article on a walk, slow enough to stay intelligible on the
+   * plainer voices some browsers are stuck with. */
+  var RATES = [0.75, 1, 1.25, 1.5, 1.75];
+
+  function rates() { return RATES.slice(); }
+
   function setRate(r) {
-    rate = TT.clamp(r, 0.6, 1.6);
+    rate = TT.clamp(r, 0.6, 2);
     restartCurrent();
     emit();
   }
+
+  /* Step to the next speed, wrapping round. Returns the speed now in force.
+   * Starts from whichever step is nearest, so a rate restored from an older
+   * setting still lands somewhere sensible. */
+  function cycleRate() {
+    var i = 0, best = Infinity;
+    RATES.forEach(function (r, n) {
+      var d = Math.abs(r - rate);
+      if (d < best) { best = d; i = n; }
+    });
+    setRate(RATES[(i + 1) % RATES.length]);
+    return rate;
+  }
+
 
   function hasSpoken(id) { return !!spoken[id]; }
   function forget(id) { if (id) delete spoken[id]; else spoken = {}; }
@@ -434,7 +469,8 @@ TT.audio = (function () {
     supported: supported, hasVoiceFor: hasVoiceFor, voiceFor: voiceFor,
     listVoices: listVoices, setVoice: setVoice,
     play: play, enqueue: enqueue, pause: pause, resume: resume, toggle: toggle,
-    next: next, stop: stop, setRate: setRate,
+    next: next, stop: stop, setRate: setRate, cycleRate: cycleRate, rates: rates,
+
     seekChapter: seekChapter, nextChapter: nextChapter, hasNextChapter: hasNextChapter,
 
     hasSpoken: hasSpoken, forget: forget,

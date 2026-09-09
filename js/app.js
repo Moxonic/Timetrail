@@ -468,13 +468,25 @@
 
   /* ---------- live Wikipedia layer ---------- */
 
+  // Every zoom or pan step ends in a 'moveend', and each one kicks off its own
+  // geosearch. Two of those can be in flight at once — zoom in, then out again
+  // before the first reply lands — and network timing does not guarantee they
+  // resolve in the order they were sent. Without this, a slow reply for a
+  // radius you have since zoomed away from can land last and overwrite a
+  // newer, correct one, which is exactly what made pins flicker in and out on
+  // their own. Only the reply matching the most recently sent request is ever
+  // applied; anything older is dropped on arrival.
+  var wikiRequestSeq = 0;
+
   var refreshWiki = TT.debounce(function () {
     if (!state().showWiki) return;
     var c = TT.map.getCenter();
     if (!c) return;
     var radius = Math.min(5000, Math.max(500, TT.map.getRadius()));
+    var seq = ++wikiRequestSeq;
     TT.wiki.nearby(c.lat, c.lng, { lang: state().lang, radius: radius, limit: 50 })
       .then(function (records) {
+        if (seq !== wikiRequestSeq) return;   // superseded by a later request
         if (!state().showWiki) return;
         // Hide anything that duplicates a curated place, by proximity + name.
         var filtered = records.filter(function (r) {
@@ -665,6 +677,20 @@
         // the demonstration. Otherwise play a line chosen to show a voice off.
         if (!TT.audio.status().playing) previewVoice();
       },
+      // The "Hear it" button beside the dropdown — always a request to listen.
+      onVoicePreview: previewVoice,
+      // The speed button on the player: one tap for the next step up. The rate
+      // takes effect on the next sentence, so there is nothing to restart.
+      onRateCycle: function () {
+        store.set({ speechRate: TT.audio.cycleRate() }, 'audio');
+      },
+      // An explicit speed, from the menu.
+      onRatePick: function (r) {
+        TT.audio.setRate(r);
+        store.set({ speechRate: TT.audio.status().rate }, 'audio');
+      },
+
+
       onNarrateToggle: function (on) {
         store.set({ autoNarrate: on }, 'audio');
         if (!on) {
@@ -722,12 +748,17 @@
     TT.ui.dom().narrateToggle.checked = false;
     store.set({ autoNarrate: false }, 'audio');
 
-    TT.audio.subscribe(function (st) { TT.ui.renderPlayer(st); });
+    TT.audio.subscribe(function (st) {
+      TT.ui.renderPlayer(st);
+      // The dropdown is on screen whether or not anything is playing, so unlike
+      // the menu it cannot wait until it is opened to read the voice list.
+      // Chrome delivers voices late, and the audio module emits when they land.
+      TT.ui.renderVoicePicker();
+    });
     TT.audio.setVoice(s.voicePrefs || {});
     TT.audio.setRate(s.speechRate || 1);
-    // The menu reads the voice list when it opens, so late-arriving voices need
-    // no retries here — only which language and choice it should show.
     TT.ui.setVoiceState(s.lang, (s.voicePrefs || {})[s.lang]);
+
 
     TT.map.init({
       center: s.center || TT.CITY.center,

@@ -251,7 +251,9 @@ a { color: var(--accent); }
 .sr-name { font-weight: 500; }
 .sr-kind { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .06em; }
 
-.topbar-actions { display: flex; gap: 8px; margin-left: auto; }
+/* Relative so the voice menu can hang from the button that opens it. */
+.topbar-actions { display: flex; gap: 8px; margin-left: auto; position: relative; }
+
 .pill {
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 999px; padding: 9px 16px; cursor: pointer;
@@ -437,11 +439,39 @@ a { color: var(--accent); }
 .more-filters[open] summary::before { content: "▾ "; }
 .more-filters summary:hover { color: var(--accent); }
 
+/* The period picker sits directly under its own heading, so it needs no gap
+   above — and it is the primary filter, so its summary reads a shade stronger
+   than the subject one below it. */
+.era-filter { margin-top: 0; }
+.era-filter summary { color: var(--text); font-size: 12.5px; }
+.era-filter .chips { margin-top: 9px; }
+
 .switch-row { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+/* The three switches that change what the map/player actually do, promoted
+   above the period filters. A tinted background and its own border give it
+   the same weight as the ".filters" block below rather than reading as an
+   afterthought tucked under "What period interests you?". */
+.switch-row-top {
+  margin-top: 0;
+  padding: 14px 16px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+}
 .switch { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--text-dim); }
 .switch input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
 
+.voice-row { display: flex; align-items: center; gap: 7px; margin: -2px 0 2px 23px; }
+.voice-select {
+  flex: 1; min-width: 0;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 6px 8px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.voice-select:hover { border-color: var(--accent); }
+.voice-row .btn { flex: none; }
+
 /* ---------- place list ---------- */
+
 .list-head {
   display: flex; align-items: baseline; justify-content: space-between;
   padding: 14px 16px 8px;
@@ -697,9 +727,10 @@ h4.sec-alt { color: var(--me); }
 .player.is-idle .pbtn-main { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .player.is-idle .player-bar { visibility: hidden; }
 
-/* Voice menu, opened from the player and anchored above it. */
+/* Voice menu. Two homes: above the player, or below the top-bar button. */
 .voice-menu {
   position: absolute; right: 10px; bottom: calc(100% + 8px);
+
   z-index: 2;
   min-width: 262px; max-width: min(330px, 80vw);
   max-height: 300px; overflow-y: auto; scrollbar-width: thin;
@@ -724,12 +755,36 @@ h4.sec-alt { color: var(--me); }
 .voice-opt.is-active { color: var(--me); font-weight: 600; }
 .voice-opt .vo-tick { flex: none; width: 12px; opacity: .9; }
 .voice-opt .vo-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Hanging below its button in the top bar rather than above the player. The
+   top bar is at the top of the window, so it opens downwards. */
+.voice-menu-top { right: 0; top: calc(100% + 8px); bottom: auto; max-height: 60vh; }
+
+/* Speeds, as one row of small targets rather than a list — there are five of
+   them and they are read as a scale, not as options to be compared. */
+.rate-row { display: flex; gap: 4px; padding: 2px 9px 8px; }
+.rate-opt {
+  flex: 1; min-width: 0;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px;
+  padding: 6px 2px; cursor: pointer; font: inherit; font-size: 11.5px;
+  color: var(--text-dim); font-variant-numeric: tabular-nums;
+}
+.rate-opt:hover { border-color: var(--me); color: var(--text); }
+.rate-opt.is-active {
+  background: var(--me); border-color: var(--me); color: #10201e; font-weight: 700;
+}
+
 .pbtn {
   background: none; border: 1px solid var(--line); color: var(--text-dim);
   border-radius: 7px; width: 32px; height: 32px; flex: none;
   cursor: pointer; font-size: 11px; line-height: 1;
   display: flex; align-items: center; justify-content: center;
 }
+/* Wide enough for "1.25×" without the other buttons shifting as it changes. */
+.pbtn-rate {
+  width: auto; min-width: 34px; padding: 0 7px;
+  font-size: 11.5px; font-variant-numeric: tabular-nums;
+}
+
 .pbtn:hover { border-color: var(--me); color: var(--text); }
 .pbtn-main { background: var(--me); border-color: var(--me); color: #10201e; font-weight: 700; }
 .pbtn-main:hover { filter: brightness(1.1); color: #10201e; }
@@ -743,6 +798,11 @@ h4.sec-alt { color: var(--me); }
   height: 3px; background: var(--line); border-radius: 2px; margin-top: 6px; overflow: hidden;
 }
 .player-fill { height: 100%; background: var(--me); border-radius: 2px; transition: width .3s ease; }
+
+/* The refresh button lights up when the map selection has moved on from what is
+   being read — a tap then jumps the narration to that pin. */
+.pbtn.is-sync { border-color: var(--accent); color: var(--accent); }
+.pbtn.is-sync:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
 /* ---------- trivia ---------- */
 h4.sec-trivia { color: var(--accent); }

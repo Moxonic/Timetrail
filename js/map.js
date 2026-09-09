@@ -211,20 +211,43 @@ TT.map = (function () {
     });
   }
 
+  /* Every pan or zoom re-fetches "what's nearby" and calls this again with a
+   * fresh list. Wiping the layer and rebuilding it from scratch each time — as
+   * this used to — meant every pin blinked out and back in on every step, even
+   * the ones that were in both the old and new list the whole time. Diffing
+   * against the existing markers instead means a pin only ever disappears when
+   * it has genuinely fallen out of range, and one already on screen keeps its
+   * loaded thumbnail rather than re-requesting it. */
   function renderWiki(records) {
-    layers.wiki.clearLayers();
-    wikiMarkers = {};
-    records.forEach(function (r) {
+    var keep = {};
+    (records || []).forEach(function (r) {
+      keep[r.id] = true;
+      if (wikiMarkers[r.id]) return;   // already on the map — leave it alone
+
       var m = L.marker([r.lat, r.lng], {
         icon: wikiIcon(r),
         title: r.title,
         alt: r.title,
         zIndexOffset: -200
       });
-      m.on('click', function () { onSelect(r.id, 'wiki', r); });
+      // The second argument is the click's *origin*, not the record's kind — that
+      // travels separately as the third argument. Passing anything but 'map'
+      // here made select() think this came from off-map UI and fly the map to
+      // it, which re-centres, fires 'moveend', and refetches + rebuilds the
+      // whole wiki layer — discarding the very pin just clicked. Anything that
+      // fails to make the freshly fetched top 50 (or now falls inside another
+      // pin's "duplicates a curated place" radius) never comes back.
+      m.on('click', function () { onSelect(r.id, 'map', r); });
       m.bindTooltip(r.title, { direction: 'top', offset: [0, -14], opacity: 0.9 });
       m.addTo(layers.wiki);
       wikiMarkers[r.id] = m;
+    });
+
+    Object.keys(wikiMarkers).forEach(function (id) {
+      if (!keep[id]) {
+        layers.wiki.removeLayer(wikiMarkers[id]);
+        delete wikiMarkers[id];
+      }
     });
   }
 
@@ -279,7 +302,9 @@ TT.map = (function () {
       m.bindTooltip(p.name + ' · ' + TT.fmtDist(s.off) + ' off the route', {
         direction: 'top', offset: [0, -8], opacity: 0.95
       });
-      m.on('click', function () { onSelect(p.id, 'spot'); });
+      // Same reasoning as the wiki marker above: this click already happened on
+      // the map, so it must report 'map' or select() re-centres on it anyway.
+      m.on('click', function () { onSelect(p.id, 'map'); });
       m.addTo(layers.spots);
     });
   }

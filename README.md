@@ -161,11 +161,22 @@ routing, progress — picks it up automatically.
   service does refuse a request the app degrades instead of breaking: routing falls back
   to straight-line estimates marked "estimated", and Wikipedia failures leave the curated
   text in place.
-- **Voices** come from the operating system, not the app. Windows and macOS both ship an
-  English voice; a Norwegian one may need to be added in system settings. Without it, the
-  Norwegian text is read by whatever voice is available, which sounds wrong. Speech is
-  also the one feature that needs a real browser gesture to start, so the toggle is
-  deliberately manual.
+- **Voices** come from the operating system, not the app, and the list is uneven enough
+  that picking the first match for a language lands you on a 1990s robot about half the
+  time. So the app ranks them: it promotes the natural-sounding sets every vendor ships
+  but never lists first — Edge's "Online (Natural)" voices, Apple's Enhanced, Premium and
+  Siri downloads, Google's network voices — and pushes down the ones that only match a
+  locale, such as the Windows SAPI "Desktop" voices, eSpeak, and the shelf of novelty
+  voices macOS has carried since the 1980s. The result is a decent default on every
+  browser without anyone choosing anything; the 🗣 button in the top bar changes it, and
+  the same choice sits in Settings. A Norwegian voice may need adding in system settings.
+  Without one, the Norwegian text is read by whatever exists, which sounds wrong.
+  Speech is also the one feature that needs a real browser gesture to start, so the
+  toggle is deliberately manual.
+- **Reading speed** is on the same menu, and on the player as a one-tap button that steps
+  0.75× → 1× → 1.25× → 1.5× → 1.75× and round again. It is remembered between visits, and
+  takes effect on the next sentence rather than restarting the one in progress.
+
 - **Trivia** is written for this app and sourced where possible; each detail that came
   from Wikipedia links to the article. Anything I could not verify was left out rather
   than guessed at.

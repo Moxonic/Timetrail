@@ -33,7 +33,19 @@
       <button id="walk-btn" class="pill" title="Use your location">◎ Walk mode</button>
       <button id="lang-btn" class="pill pill-sq" title="Wikipedia language">EN</button>
       <button id="theme-btn" class="pill pill-sq" title="Light / dark">☾</button>
+      <!-- Voice and speed, reachable before anything is playing — the player
+           only appears once there is something to read. -->
+      <button id="voice-btn" class="pill pill-sq" title="Voice and reading speed"
+              aria-label="Voice and reading speed" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+          <path d="M3 6.2v3.6M6 3.4v9.2M10 4.8v6.4M13 6.8v2.4" fill="none"
+                stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <div id="voice-menu-top" class="voice-menu voice-menu-top" role="menu"
+           aria-label="Voice and speed" hidden></div>
     </div>
+
   </div>
 
   <!-- ---------- Side panel ---------- -->
@@ -51,12 +63,44 @@
 
     <!-- Discover -->
     <section id="view-discover" class="view active" role="tabpanel">
+      <!-- These three change what the map and the player actually do, not just
+           which places the list shows — promoted above the period filters so
+           they read as the first choice you make, not a setting buried under
+           them. "Hide places I have already seen" stays below with era/theme/
+           timeline: it narrows the list the same way those do. -->
+      <div class="switch-row switch-row-top">
+        <label class="switch">
+          <input id="wiki-toggle" type="checkbox" checked>
+          <span>Show live Wikipedia places nearby</span>
+        </label>
+        <label class="switch">
+          <input id="trivia-toggle" type="checkbox" checked>
+          <span>Curiosity mode — the small details</span>
+        </label>
+        <label class="switch">
+          <input id="narrate-toggle" type="checkbox">
+          <span>Read places aloud as I walk</span>
+        </label>
+        <!-- The same choice as the player's voice menu, but always on screen:
+             the player only appears once there is something to read. -->
+        <div id="voice-row" class="voice-row" hidden>
+          <select id="voice-select" class="voice-select" aria-label="Narration voice"></select>
+          <button id="voice-preview" class="btn btn-sm btn-ghost" type="button">Hear it</button>
+        </div>
+      </div>
+
       <div class="filters">
         <div class="filter-head">
           <h3>What period interests you?</h3>
           <button id="reset-filters" class="link">Reset</button>
         </div>
-        <div id="era-chips" class="chips"></div>
+        <!-- Collapsed like the subject picker below. Eight periods is a lot of
+             panel to spend before the list of places starts, and the summary
+             says what is chosen without opening it. -->
+        <details id="era-filter" class="more-filters era-filter">
+          <summary><span id="era-summary">All periods</span></summary>
+          <div id="era-chips" class="chips"></div>
+        </details>
 
         <div class="timeline">
           <div class="timeline-head">
@@ -77,18 +121,6 @@
         </details>
 
         <div class="switch-row">
-          <label class="switch">
-            <input id="wiki-toggle" type="checkbox" checked>
-            <span>Show live Wikipedia places nearby</span>
-          </label>
-          <label class="switch">
-            <input id="trivia-toggle" type="checkbox" checked>
-            <span>Curiosity mode — the small details</span>
-          </label>
-          <label class="switch">
-            <input id="narrate-toggle" type="checkbox">
-            <span>Read places aloud as I walk</span>
-          </label>
           <label class="switch">
             <input id="unvisited-toggle" type="checkbox">
             <span>Hide places I have already seen</span>
@@ -138,6 +170,8 @@
       <div class="player-bar"><div class="player-fill" id="player-fill"></div></div>
     </div>
     <button id="player-next" class="pbtn" title="Skip to the next one">▶▶</button>
+    <button id="player-rate" class="pbtn pbtn-rate" title="Reading speed">1×</button>
+
     <!-- Chapters of the article being read. Hidden until there are some. -->
     <button id="player-chapters" class="pbtn" title="Jump to a chapter"
             aria-label="Jump to a chapter" aria-haspopup="true" aria-expanded="false" hidden>
@@ -156,7 +190,10 @@
               stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
       </svg>
     </button>
-    <button id="player-stop" class="pbtn" title="Stop reading">✕</button>
+    <!-- Re-points the player at whatever pin is selected on the map: a way to
+         pick up a place chosen mid-reading, or to restart the current one. -->
+    <button id="player-refresh" class="pbtn" title="Play the place selected on the map">↻</button>
+
     <div id="voice-menu" class="voice-menu" role="menu" aria-label="Narration voice" hidden></div>
     <!-- The same popup as the voice menu, listing the article's headings, so a
          chapter can be picked without going back to the panel. -->

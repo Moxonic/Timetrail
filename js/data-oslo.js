@@ -165,7 +165,8 @@ TT.PLACES = [
     kind: 'district',
     blurb: 'The rectangular street grid Christian IV imposed on the rebuilt city — the oldest surviving town plan in Oslo, and still legible in the block sizes.',
     tips: 'Look for the height of the older stone houses: the king ordered brick and stone to stop the next fire.',
-    wiki: { en: 'Kvadraturen', no: 'Kvadraturen' }
+    // Bare "Kvadraturen" is a disambiguation page in both languages.
+    wiki: { en: 'Kvadraturen', no: 'Kvadraturen (Oslo)' }
   },
   {
     id: 'gamle-radhus',
@@ -213,7 +214,8 @@ TT.PLACES = [
     kind: 'square',
     blurb: 'The old market square, still selling flowers. The 19th-century statue of Christian IV stands with one arm out, and Oslo has cheerfully reinterpreted the gesture ever since.',
     tips: 'Market stalls in the morning; the square is at its best before the shops open.',
-    wiki: { en: 'Stortorvet', no: 'Stortorvet' }
+    // "Stortorvet" alone is a disambiguation page on the Norwegian wiki.
+    wiki: { en: 'Stortorvet', no: 'Stortorvet (Oslo)' }
   },
   {
     id: 'engebret',
