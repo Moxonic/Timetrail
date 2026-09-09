@@ -165,9 +165,12 @@ routing, progress — picks it up automatically.
   that picking the first match for a language lands you on a 1990s robot about half the
   time. So the app ranks them: it promotes the natural-sounding sets every vendor ships
   but never lists first — Edge's "Online (Natural)" voices, Apple's Enhanced, Premium and
-  Siri downloads, Google's network voices — and pushes down the ones that only match a
-  locale, such as the Windows SAPI "Desktop" voices, eSpeak, and the shelf of novelty
-  voices macOS has carried since the 1980s. The result is a decent default on every
+  Siri downloads, Google's network voices — by enough that a natural voice always wins
+  over a plain one, whatever the locale. It pushes down the robotic locale-only fallbacks
+  (Windows SAPI "Desktop", eSpeak) so they are used only when nothing else exists, and
+  drops the macOS novelty voices — the croaky, whispering and robotic ones like Albert,
+  Whisper and Zarvox — from the list entirely, so they are never picked and cannot be
+  chosen even by an old saved preference. The result is a decent default on every
   browser without anyone choosing anything; the 🗣 button in the top bar changes it, and
   the same choice sits in Settings. A Norwegian voice may need adding in system settings.
   Without one, the Norwegian text is read by whatever exists, which sounds wrong.

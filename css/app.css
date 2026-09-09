@@ -911,7 +911,7 @@ h4.sec-trivia { color: var(--accent); }
   .topbar-actions { margin-left: auto; }
   .pill { padding: 7px 12px; font-size: 12px; }
 
-  .status { top: auto; bottom: calc(var(--sheet-h, 52vh) + 10px); left: 10px; right: 10px; }
+  .status { top: auto; bottom: calc(var(--sheet-h, 52vh) + 22px); left: 10px; right: 10px; }
 
   /* Bottom sheet. Its height is driven by TT.panel, between a peek and
      nearly full screen, so the map or the panel can own the display. */
@@ -923,27 +923,32 @@ h4.sec-trivia { color: var(--accent); }
     transform: none !important;
   }
 
+  /* A grab tab that juts up past the sheet's top edge. The sheet never leaves
+     the screen entirely, but the handle still has to read as the thing you
+     pull — the same job the sidebar handle does by sticking out to the side. */
   #panel-handle {
-    right: auto; top: 0; left: 0;
-    transform: none;
-    width: 100%; height: 26px;
-    border: 0; border-radius: 16px 16px 0 0;
-    background: none;
+    right: auto; left: 50%; top: -14px;
+    transform: translateX(-50%);
+    width: 64px; height: 28px;
+    border: 1px solid var(--line); border-bottom: 0;
+    border-radius: 12px 12px 0 0;
+    background: var(--panel);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, .12);
+    align-items: flex-start; padding-top: 7px;
     cursor: ns-resize;
+    z-index: 3;
   }
-  #panel-handle span { width: 40px; height: 4px; }
-  #panel-handle:hover span, #panel-handle:focus-visible span { height: 5px; width: 52px; }
-  /* The sidebar's "hidden" styling does not apply to a sheet. */
-  #panel[data-snap="hidden"] #panel-handle,
-  #panel[data-snap="peek"] #panel-handle { background: none; border: 0; }
+  #panel-handle span { width: 34px; height: 4px; }
+  #panel-handle:hover span, #panel-handle:focus-visible span { height: 5px; width: 46px; }
+  /* At peek the sheet is mostly gone, so colour the grip to say it is still live. */
   #panel[data-snap="peek"] #panel-handle span { background: var(--accent); }
 
-  /* Overlays ride on top of the sheet, wherever the visitor has left it. */
-  .arrival { right: 10px; left: 10px; bottom: calc(var(--sheet-h, 52vh) + 12px); width: auto; }
-  .toast { bottom: calc(var(--sheet-h, 52vh) + 12px); }
-  .player { left: 10px; right: 10px; width: auto; bottom: calc(var(--sheet-h, 52vh) + 12px); }
+  /* Overlays ride on top of the sheet, clearing the tab that juts above it. */
+  .arrival { right: 10px; left: 10px; bottom: calc(var(--sheet-h, 52vh) + 24px); width: auto; }
+  .toast { bottom: calc(var(--sheet-h, 52vh) + 24px); }
+  .player { left: 10px; right: 10px; width: auto; bottom: calc(var(--sheet-h, 52vh) + 24px); }
   /* Keep the player and a toast from landing on top of each other. */
-  .player:not([hidden]) ~ .toast { bottom: calc(var(--sheet-h, 52vh) + 84px); }
+  .player:not([hidden]) ~ .toast { bottom: calc(var(--sheet-h, 52vh) + 96px); }
 
   .detail-img { height: 140px; }
 }

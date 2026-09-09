@@ -9,7 +9,7 @@ TT.store = (function () {
 
   var defaults = {
     lang: 'en',            // 'en' | 'no' — which Wikipedia to read
-    theme: 'dark',
+    theme: 'light',        // always boots in day mode — see the restore below
     eras: [],              // selected era ids; empty = all
     themes: [],            // selected theme ids; empty = all
     years: [800, 2030],    // timeline range
@@ -35,7 +35,9 @@ TT.store = (function () {
   try {
     var saved = JSON.parse(localStorage.getItem(KEY) || '{}');
     Object.keys(saved).forEach(function (k) {
-      if (k in defaults) state[k] = saved[k];
+      // Theme is deliberately not restored: every visit starts in day mode,
+      // and the toggle only lasts for that session.
+      if (k in defaults && k !== 'theme') state[k] = saved[k];
     });
   } catch (e) { /* start fresh */ }
 

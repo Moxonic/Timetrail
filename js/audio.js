@@ -59,32 +59,47 @@ TT.audio = (function () {
    * cloud-served ones, and every vendor advertises them in the name. Edge's
    * "Online (Natural)" set and Apple's Enhanced/Premium downloads are both
    * free — they are simply never first in getVoices(), which is why picking
-   * the first locale match used to leave us with the 1990s robot. */
+   * the first locale match used to leave us with the 1990s robot.
+   *
+   * The top tier's bonus (80) is deliberately larger than the whole locale
+   * range (70–100), so a recognisably natural voice always outranks a plain
+   * one — the least-preferred natural locale still beats the best plain one. */
   var GOOD = [
-    [/natural|neural|wavenet|journey|multilingual/, 60],
+    [/natural|neural|wavenet|journey|multilingual/, 80],
     [/premium|enhanced/, 45],
     [/siri/, 45],
     [/online/, 35],
     [/^google/, 30]
   ];
 
-  /* And the ones to push down, which matters just as much. Every platform still
-   * ships something old: Windows keeps the SAPI "Desktop" voices, Linux and
-   * older Android fall back to eSpeak, and macOS carries a shelf of novelty
-   * voices from the 1980s. All of them answer to a locale as readily as a good
-   * voice does, so without this the automatic pick is a coin toss on exactly
-   * the browsers with the least to offer. */
+  /* Down-ranked but still usable as a last resort, because on some platforms
+   * they are the only thing there is: Windows keeps the SAPI "Desktop" voices,
+   * and Linux and older Android fall back to eSpeak. Robotic, not unusable —
+   * the outright unacceptable ones are in NEVER below. */
   var BAD = [
     [/\bespeak|\bpico\b|festival|flite/, 80],
-    [/\bdesktop\b/, 55],
-    [/\b(albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|junior|kathy|princess|ralph|fred|agnes|victoria|bruce)\b/, 70]
+    [/\bdesktop\b/, 55]
   ];
 
+  /* Voices that are never acceptable for a spoken guide, however thin the
+   * choice on a given device: the macOS novelty set — croaky (Albert, Ralph,
+   * Bahh), whispering (Whisper), robotic (Zarvox, Trinoids) — and the legacy
+   * 1990s voices in the same family. scoreVoice returns null for these, so they
+   * are dropped from the list entirely rather than merely pushed down, and even
+   * a saved preference for one is passed over for the best real voice. */
+  var NEVER = new RegExp('\\b(' + [
+    'albert', 'bad news', 'badnews', 'bahh', 'bells', 'boing', 'bubbles',
+    'cellos', 'deranged', 'good news', 'goodnews', 'hysterical', 'jester',
+    'organ', 'superstar', 'trinoids', 'whisper', 'wobble', 'zarvox',
+    'fred', 'junior', 'kathy', 'princess', 'ralph', 'bruce', 'agnes',
+    'vicki', 'victoria'
+  ].join('|') + ')\\b');
 
   function scoreVoice(v, lang) {
     var base = localeScore(v, lang);
     if (base == null) return null;
     var name = ((v.name || '') + ' ' + (v.voiceURI || '')).toLowerCase();
+    if (NEVER.test(name)) return null;
     var good = false;
     GOOD.forEach(function (h) {
       if (h[0].test(name)) { base += h[1]; good = true; }
