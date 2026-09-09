@@ -76,12 +76,19 @@ first illuminated advertisement in Europe in 1909 and grew animated storks in 19
 52 details across 40 places, most carrying a link to the Wikipedia article they came from
 so you can check them.
 
-**Listen while you walk.** Every place has a Listen button that reads it aloud — the
-curated introduction, then the Wikipedia lead section, then the trivia — using the
-browser's own speech synthesis, in English or Norwegian. Switch on *Read places aloud as
-I walk* with walk mode and it becomes a hands-free audio tour: as you come within 90 m of
-anything, curated or merely on Wikipedia, it queues up and narrates it, once each. A
-player bar gives you pause, skip and stop.
+**Listen to the whole article.** Every place has a Listen button, and it reads the entire
+Wikipedia article rather than the first paragraph: the curated introduction, the article's
+lead, then each section in turn, using the browser's own speech synthesis, in English or
+Norwegian. The article's own headings become chapter buttons under the text — press
+*History* and it starts there and keeps reading to the end. The player bar names the
+chapter being read, its skip button steps to the next one, and a chapters menu on the
+player itself lets you jump about one-handed while walking.
+
+**A hands-free tour.** Switch on *Read places aloud as I walk* with walk mode and it
+narrates whatever you come near: as you get within 90 m of anything, curated or merely on
+Wikipedia, it queues up and reads its opening, once each. Passing somewhere is worth a
+paragraph, so the tour stays short — staying is what the chapters are for.
+
 
 **Walk mode.** Uses your position to re-sort everything by walking distance, routes the
 trail from where you actually are, and pops a "You are here" card when you come within
@@ -104,9 +111,11 @@ js/
   eras.js           the eight periods and ten themes
   data-oslo.js      61 curated places + 10 walks   ← edit this to add a city
   trivia-oslo.js    the small details, keyed by place id
-  wiki.js           Wikipedia summary/intro/search/geosearch + geocoding, cached
+  wiki.js           Wikipedia summary/intro/article/search/geosearch + geocoding, cached
+
   store.js          state + localStorage persistence
-  audio.js          speech synthesis: queue, voices, narration scripts
+  audio.js          speech synthesis: queue, chapters, voices, narration scripts
+
   route.js          real pedestrian routing, polyline decode, spots-along-route
   recommend.js      filtering, scoring, "next" and "switch" logic, stop ordering
   map.js            Leaflet: pins, routes, spots, position

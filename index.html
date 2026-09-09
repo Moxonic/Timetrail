@@ -89,10 +89,6 @@
             <input id="narrate-toggle" type="checkbox">
             <span>Read places aloud as I walk</span>
           </label>
-          <div id="voice-row" class="voice-row" hidden>
-            <select id="voice-select" class="voice-select" aria-label="Narration voice"></select>
-            <button id="voice-preview" class="btn btn-sm btn-ghost" type="button">Hear it</button>
-          </div>
           <label class="switch">
             <input id="unvisited-toggle" type="checkbox">
             <span>Hide places I have already seen</span>
@@ -132,16 +128,41 @@
     <section id="view-detail" class="view" role="tabpanel"></section>
   </aside>
 
-  <!-- Spoken-guide player. Appears whenever something is being read aloud. -->
+  <!-- Spoken-guide player: the one place narration is started and controlled.
+       Shows what is being read, or what the play button would read next. -->
   <div id="player" class="player" hidden>
-    <button id="player-toggle" class="pbtn pbtn-main" title="Play / pause">❚❚</button>
+    <button id="player-toggle" class="pbtn pbtn-main" title="Read this aloud">▶</button>
     <div class="player-body">
       <div class="player-title" id="player-title">—</div>
       <div class="player-sub" id="player-sub"></div>
       <div class="player-bar"><div class="player-fill" id="player-fill"></div></div>
     </div>
     <button id="player-next" class="pbtn" title="Skip to the next one">▶▶</button>
+    <!-- Chapters of the article being read. Hidden until there are some. -->
+    <button id="player-chapters" class="pbtn" title="Jump to a chapter"
+            aria-label="Jump to a chapter" aria-haspopup="true" aria-expanded="false" hidden>
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+        <path d="M3 4h10M3 8h10M3 12h6" fill="none"
+              stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      </svg>
+    </button>
+
+    <!-- A drawn waveform rather than an emoji: it inherits the button's colour
+         and stays crisp beside the ▶▶ and ✕ glyphs. -->
+    <button id="player-voice" class="pbtn" title="Change voice" aria-label="Change voice"
+            aria-haspopup="true" aria-expanded="false">
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+        <path d="M3 6.2v3.6M6 3.4v9.2M10 4.8v6.4M13 6.8v2.4" fill="none"
+              stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      </svg>
+    </button>
     <button id="player-stop" class="pbtn" title="Stop reading">✕</button>
+    <div id="voice-menu" class="voice-menu" role="menu" aria-label="Narration voice" hidden></div>
+    <!-- The same popup as the voice menu, listing the article's headings, so a
+         chapter can be picked without going back to the panel. -->
+    <div id="chapter-menu" class="voice-menu chapter-menu" role="menu"
+         aria-label="Article chapters" hidden></div>
+
   </div>
 
   <!-- Overlays sit after the panel so sibling selectors can reposition them. -->

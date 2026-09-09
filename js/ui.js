@@ -35,15 +35,17 @@ TT.ui = (function () {
       unvisitedToggle: $('#unvisited-toggle'),
       triviaToggle: $('#trivia-toggle'),
       narrateToggle: $('#narrate-toggle'),
-      voiceRow: $('#voice-row'),
-      voiceSelect: $('#voice-select'),
-      voicePreview: $('#voice-preview'),
+      playerVoice: $('#player-voice'),
+      voiceMenu: $('#voice-menu'),
       player: $('#player'),
       playerTitle: $('#player-title'),
       playerSub: $('#player-sub'),
       playerFill: $('#player-fill'),
       playerToggle: $('#player-toggle'),
       playerNext: $('#player-next'),
+      playerChapters: $('#player-chapters'),
+      chapterMenu: $('#chapter-menu'),
+
       playerStop: $('#player-stop'),
       search: $('#search'),
       searchResults: $('#search-results'),
@@ -79,15 +81,38 @@ TT.ui = (function () {
     dom.narrateToggle.addEventListener('change', function () {
       H.onNarrateToggle && H.onNarrateToggle(dom.narrateToggle.checked);
     });
-    dom.voiceSelect.addEventListener('change', function () {
-      H.onVoicePick && H.onVoicePick(dom.voiceSelect.value);
+    // One button for the whole of play/pause: it starts the selected place when
+    // nothing is being read, and pauses or resumes when something is.
+    dom.playerToggle.addEventListener('click', function () {
+      if (TT.audio.status().playing) TT.audio.toggle();
+      else H.onListen && H.onListen();
     });
-    dom.voicePreview.addEventListener('click', function () {
-      H.onVoicePreview && H.onVoicePreview();
+    dom.playerVoice.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleVoiceMenu();
+    });
+    dom.playerChapters.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleChapterMenu();
+    });
+    document.addEventListener('click', function (e) {
+      if (dom.player.contains(e.target)) return;
+      if (!dom.voiceMenu.hidden) closeVoiceMenu();
+      if (!dom.chapterMenu.hidden) closeChapterMenu();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (!dom.voiceMenu.hidden) { closeVoiceMenu(); dom.playerVoice.focus(); }
+      if (!dom.chapterMenu.hidden) { closeChapterMenu(); dom.playerChapters.focus(); }
     });
 
-    dom.playerToggle.addEventListener('click', function () { TT.audio.toggle(); });
-    dom.playerNext.addEventListener('click', function () { TT.audio.next(); });
+    // Inside an article, skipping means the next chapter; the queue of other
+    // places is only reached once the article has run out of them.
+    dom.playerNext.addEventListener('click', function () {
+      if (TT.audio.hasNextChapter()) TT.audio.nextChapter();
+      else TT.audio.next();
+    });
+
     dom.playerStop.addEventListener('click', function () { TT.audio.stop(); });
     $('#reset-filters').addEventListener('click', function () {
       TT.store.resetFilters();
@@ -142,6 +167,9 @@ TT.ui = (function () {
     dom.panel.scrollTop = 0;
     var body = dom.views[name];
     if (body) body.scrollTop = 0;
+    // The offer to read a place belongs to the place you have open. Leaving the
+    // detail view withdraws it; anything already being read carries on.
+    if (name !== 'detail') setListenTarget(null);
   }
 
   /* ---------- filters ---------- */
@@ -469,6 +497,8 @@ TT.ui = (function () {
   function renderDetail(model) {
     var v = dom.detail;
     clear(v);
+    chapterChips = null;      // the buttons about to be discarded by clear()
+
     var p = model.place;
     var isWiki = model.kind === 'wiki';
     var era = isWiki ? null : TT.primaryEra(p);
@@ -478,10 +508,8 @@ TT.ui = (function () {
         text: '‹ Back', onclick: function () { setTab('discover'); }
       }),
       el('div.spacer'),
-      TT.audio.supported() ? el('button.btn.btn-sm.btn-listen', {
-        title: 'Read this aloud',
-        onclick: function () { H.onListen && H.onListen(p, model); }
-      }, ['▶ Listen']) : null,
+      // No Listen button here: the player owns starting narration, so that there
+      // is exactly one play control rather than two that can disagree.
       !isWiki ? el('button.btn.btn-sm' + (TT.store.isVisited(p.id) ? '.btn-ghost' : '.btn-primary'), {
         text: TT.store.isVisited(p.id) ? '✓ Been here' : 'Mark as seen',
         onclick: function () { H.onVisit && H.onVisit(p.id); }
@@ -562,6 +590,11 @@ TT.ui = (function () {
       }));
     }
     v.appendChild(wikiBox);
+
+    /* Chapters, so a long article can be listened to a part at a time. */
+    if (model.article && model.article.sections && model.article.sections.length) {
+      v.appendChild(renderChapterList(model));
+    }
 
     /* The small details — only when curiosity mode is on. */
     if (!isWiki && p.trivia && p.trivia.length && TT.store.get().trivia) {
@@ -659,21 +692,170 @@ TT.ui = (function () {
     setTab('detail');
   }
 
-  /* ---------- spoken guide player ---------- */
-  function renderPlayer(s) {
-    if (!s.playing && !s.title) { dom.player.hidden = true; return; }
-    dom.player.hidden = false;
-    dom.playerTitle.textContent = s.title || '';
-    dom.playerToggle.textContent = s.paused ? '▶' : '❚❚';
-    dom.playerToggle.title = s.paused ? 'Resume' : 'Pause';
-    dom.player.classList.toggle('is-paused', s.paused);
+  /* The article's own headings as buttons. Pressing one reads from there to the
+   * end of the article rather than stopping at the end of that chapter, so this
+   * is a way into a long page as much as it is a table of contents. */
+  function renderChapterList(model) {
+    var sections = model.article.sections;
+    var lang = TT.store.get().lang;
+    var box = el('div.chapters');
 
-    var bits = [];
-    if (s.total) bits.push('part ' + s.progress + ' of ' + s.total);
-    if (s.queued) bits.push(s.queued + ' more waiting');
-    dom.playerSub.textContent = bits.join(' · ');
-    dom.playerFill.style.width = s.total
-      ? Math.round(100 * s.progress / s.total) + '%' : '0%';
+    box.appendChild(el('h4.sec.sec-chapters', {}, [
+      'Listen by chapter',
+      el('span.sec-hint', { text: sections.length + ' in this article' })
+    ]));
+
+    var row = el('div.chapter-row');
+    var buttons = [];
+    // Chapter 0 is the opening the guide writes itself, ahead of the headings.
+    var labels = [{ title: lang === 'no' ? 'Innledning' : 'Introduction', level: 2 }]
+      .concat(sections);
+    // And curiosity mode adds one of ours at the end, so it needs a button too —
+    // these have to stay in step with what TT.narrationParts builds.
+    var p = model.place;
+    if (model.kind === 'curated' && p.trivia && p.trivia.length && TT.store.get().trivia) {
+      labels.push({ title: lang === 'no' ? 'Verdt å vite' : 'Worth knowing', level: 2 });
+    }
+
+
+    labels.forEach(function (sec, i) {
+      var b = el('button.chapter-chip' + (sec.level > 2 ? '.is-sub' : ''), {
+        title: 'Read from here to the end of the article',
+        onclick: function () { H.onListenChapter && H.onListenChapter(i); }
+      }, [sec.title]);
+      buttons.push(b);
+      row.appendChild(b);
+    });
+
+    box.appendChild(row);
+    chapterChips = { id: model.place.id, buttons: buttons };
+    syncChapterChips(TT.audio.status());
+    return box;
+  }
+
+  /* ---------- spoken guide player ----------
+
+   *
+   * The player is the only narration control in the app. It has two states:
+   * reading something, or offering to read the place you have open. That is why
+   * it appears on selecting a place rather than only once audio starts — the
+   * play button is the "listen" button, so it has to be there before you listen.
+   */
+  var listenTarget = null;   // the selected place, i.e. what play would read
+
+  function setListenTarget(place) {
+    listenTarget = place ? (place.name || place.title || null) : null;
+    renderPlayer(TT.audio.status());
+  }
+
+  function renderPlayer(s) {
+    var busy = s.playing || !!s.title;
+    // With nothing to read and no voice to read it, the player has no purpose.
+    if (!busy && (!listenTarget || !s.supported)) {
+      dom.player.hidden = true;
+      closeVoiceMenu();
+      closeChapterMenu();
+      return;
+    }
+
+    dom.player.hidden = false;
+    dom.player.classList.toggle('is-idle', !busy);
+    dom.player.classList.toggle('is-paused', !!s.paused);
+
+    if (busy) {
+      dom.playerTitle.textContent = s.title || '';
+      dom.playerToggle.textContent = s.paused ? '▶' : '❚❚';
+      dom.playerToggle.title = s.paused ? 'Resume' : 'Pause';
+      var bits = [];
+      // Which chapter, before how far in: in a long article the heading is what
+      // tells you where you are, and "part 34 of 61" on its own does not.
+      if (s.chapterTitle) bits.push(s.chapterTitle);
+      if (s.total) bits.push('part ' + s.progress + ' of ' + s.total);
+      if (s.queued) bits.push(s.queued + ' more waiting');
+      dom.playerSub.textContent = bits.join(' · ');
+
+      dom.playerFill.style.width = s.total
+        ? Math.round(100 * s.progress / s.total) + '%' : '0%';
+    } else {
+      dom.playerTitle.textContent = listenTarget;
+      dom.playerToggle.textContent = '▶';
+      dom.playerToggle.title = 'Read this aloud';
+      dom.playerSub.textContent = 'Read this place aloud';
+      dom.playerFill.style.width = '0%';
+    }
+
+    // Skip needs somewhere to skip to: another chapter, or another place.
+    dom.playerNext.hidden = !busy || (!s.queued && !s.moreChapters);
+    dom.playerNext.title = s.moreChapters ? 'Skip to the next chapter' : 'Skip to the next one';
+    dom.playerStop.hidden = !busy;
+    dom.playerVoice.hidden = !s.supported;
+
+    // One chapter is the whole reading, so the menu would offer nothing.
+    var hasChapters = busy && s.chapters && s.chapters.length > 1;
+    dom.playerChapters.hidden = !hasChapters;
+    if (!hasChapters) closeChapterMenu();
+    else if (!dom.chapterMenu.hidden) markChapterMenu(s);
+
+    syncChapterChips(s);
+  }
+
+  /* ---------- chapters ----------
+   *
+   * A Wikipedia article is read straight through, so the chapter controls are
+   * for getting to the part you want: the buttons under the article in the
+   * panel, and this menu for doing it one-handed while walking. Both start the
+   * reading at that chapter and let it run on to the end of the article. */
+  function toggleChapterMenu() {
+    if (dom.chapterMenu.hidden) buildChapterMenu(); else closeChapterMenu();
+  }
+
+  function closeChapterMenu() {
+    dom.chapterMenu.hidden = true;
+    dom.playerChapters.setAttribute('aria-expanded', 'false');
+  }
+
+  function buildChapterMenu() {
+    var s = TT.audio.status();
+    clear(dom.chapterMenu);
+    dom.chapterMenu.appendChild(el('div.voice-menu-head', { text: 'Chapters' }));
+    (s.chapters || []).forEach(function (c, i) {
+      dom.chapterMenu.appendChild(el('button.voice-opt' + (c.level > 2 ? '.is-sub' : ''), {
+        role: 'menuitemradio',
+        'data-chapter': String(i),
+        onclick: function () {
+          closeChapterMenu();
+          H.onListenChapter && H.onListenChapter(i);
+        }
+      }, [
+        el('span.vo-tick', { text: '' }),
+        el('span.vo-name', { text: c.label || ('Part ' + (i + 1)) })
+      ]));
+    });
+    markChapterMenu(s);
+    dom.chapterMenu.hidden = false;
+    dom.playerChapters.setAttribute('aria-expanded', 'true');
+  }
+
+  /* Tick the chapter being read. Kept apart from building the menu so it can
+   * follow along while the menu is open, without rebuilding under a finger. */
+  function markChapterMenu(s) {
+    TT.$$('#chapter-menu .voice-opt').forEach(function (b) {
+      var on = Number(b.getAttribute('data-chapter')) === s.chapter;
+      b.classList.toggle('is-active', on);
+      var tick = b.querySelector('.vo-tick');
+      if (tick) tick.textContent = on ? '▶' : '';
+    });
+  }
+
+  /* The chapter buttons rendered under the article, if that place is on screen. */
+  var chapterChips = null;   // { id, buttons: [] }
+
+  function syncChapterChips(s) {
+    if (!chapterChips) return;
+    var live = s.id === chapterChips.id;
+    chapterChips.buttons.forEach(function (b, i) {
+      b.classList.toggle('is-active', live && s.chapter === i);
+    });
   }
 
   /* ---------- search results dropdown ---------- */
@@ -710,45 +892,75 @@ TT.ui = (function () {
     dom.status.hidden = !text;
   }
 
-  /* The voice picker.
+  /* The voice menu, opened from the player.
    *
-   * Two reasons it exists: the device's voice list is wildly uneven between
-   * browsers, and which of the good ones sounds pleasant is taste. Rebuilt only
-   * when the list or the language actually changes — the audio module emits on
-   * every sentence, and swapping options underneath an open dropdown is rude. */
-  var voiceSig = null;
+   * It exists because the device's voice list is wildly uneven between browsers,
+   * and which of the good ones sounds pleasant is taste. Built on open rather
+   * than on every audio tick, so the list can never shift under a pointer. */
+  var voiceState = { lang: 'en', chosen: '' };
 
-  function renderVoicePicker(lang, chosen) {
-    if (!TT.audio.supported()) { dom.voiceRow.hidden = true; return; }
-    var list = TT.audio.listVoices(lang);
-    // One voice is not a choice, and none is a different problem, reported
-    // elsewhere. Either way the row is only clutter.
-    if (list.length < 2) { dom.voiceRow.hidden = true; return; }
+  function setVoiceState(lang, chosen) {
+    voiceState = { lang: lang, chosen: chosen || '' };
+    if (!dom.voiceMenu.hidden) buildVoiceMenu();
+  }
 
-    var sig = lang + '|' + list.length + '|' + (chosen || '');
-    dom.voiceRow.hidden = false;
-    if (sig === voiceSig) return;
-    voiceSig = sig;
+  function toggleVoiceMenu() {
+    if (dom.voiceMenu.hidden) buildVoiceMenu(); else closeVoiceMenu();
+  }
 
-    clear(dom.voiceSelect);
-    dom.voiceSelect.appendChild(new Option(
-      'Best voice on this device — ' + voiceLabel(list[0]), ''));
-    list.forEach(function (v) {
-      dom.voiceSelect.appendChild(new Option(voiceLabel(v), v.voiceURI));
-    });
-    dom.voiceSelect.value = chosen && list.some(function (v) { return v.voiceURI === chosen; })
-      ? chosen : '';
+  function closeVoiceMenu() {
+    dom.voiceMenu.hidden = true;
+    dom.playerVoice.setAttribute('aria-expanded', 'false');
+  }
+
+  function buildVoiceMenu() {
+    var list = TT.audio.listVoices(voiceState.lang);
+    clear(dom.voiceMenu);
+
+    if (!list.length) {
+      dom.voiceMenu.appendChild(el('div.voice-menu-head', {
+        text: voiceState.lang === 'no'
+          ? 'No Norwegian voice on this device'
+          : 'No voice on this device'
+      }));
+    } else {
+      dom.voiceMenu.appendChild(el('div.voice-menu-head', { text: 'Voice' }));
+      // The automatic row names its pick, but without the locale — the row is
+      // the longest in the menu and that is the part it can afford to lose.
+      dom.voiceMenu.appendChild(voiceOption(
+        '', 'Best available — ' + voiceLabel(list[0], true), !voiceState.chosen));
+      list.forEach(function (v) {
+        dom.voiceMenu.appendChild(voiceOption(
+          v.voiceURI, voiceLabel(v), voiceState.chosen === v.voiceURI));
+      });
+    }
+    dom.voiceMenu.hidden = false;
+    dom.playerVoice.setAttribute('aria-expanded', 'true');
+  }
+
+  function voiceOption(uri, label, active) {
+    return el('button.voice-opt' + (active ? '.is-active' : ''), {
+      role: 'menuitemradio',
+      onclick: function () {
+        closeVoiceMenu();
+        H.onVoicePick && H.onVoicePick(uri);
+      }
+    }, [
+      el('span.vo-tick', { text: active ? '✓' : '' }),
+      el('span.vo-name', { text: label })
+    ]);
   }
 
   /* Names range from "Daniel" to "Microsoft Sonia Online (Natural) - English
    * (United Kingdom)". Trim the noise, keep the locale, flag the good ones. */
-  function voiceLabel(v) {
+  function voiceLabel(v, noLocale) {
+    // Drop the vendor and the trailing language gloss, but keep words like
+    // "Enhanced" — they are often all that separates two voices called Daniel.
     var name = (v.name || 'Voice')
-      .replace(/^(Microsoft|Google|Apple)s+/i, '')
-      .replace(/s*-s*[^-]+([^)]*)s*$/, '')
-      .replace(/s*((Natural|Enhanced|Premium|Compact))/ig, '')
+      .replace(/^(Microsoft|Google|Apple)\s+/i, '')
+      .replace(/\s*-\s*[^-]+\([^)]*\)\s*$/, '')
       .trim();
-    var tag = (v.lang || '').replace('_', '-');
+    var tag = noLocale ? '' : (v.lang || '').replace('_', '-');
     var nice = /natural|neural|premium|enhanced|siri/i.test(v.name + ' ' + v.voiceURI)
       || v.localService === false;
     return name + (tag ? ' · ' + tag : '') + (nice ? ' ✦' : '');
@@ -803,7 +1015,7 @@ TT.ui = (function () {
     renderEraChips: renderEraChips, renderThemeChips: renderThemeChips, syncTimeline: syncTimeline,
     renderList: renderList, renderTrails: renderTrails, renderActiveTrail: renderActiveTrail,
     renderItinerary: renderItinerary, renderPlayer: renderPlayer,
-    renderVoicePicker: renderVoicePicker,
+    setListenTarget: setListenTarget, setVoiceState: setVoiceState,
     renderDetail: renderDetail, renderSearch: renderSearch,
     setWalkState: setWalkState, setStatus: setStatus, setLang: setLang, setTheme: setTheme,
     toast: toast, arrival: arrival,
