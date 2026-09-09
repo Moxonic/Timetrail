@@ -165,7 +165,7 @@ TT.PLACES = [
     kind: 'district',
     blurb: 'The rectangular street grid Christian IV imposed on the rebuilt city — the oldest surviving town plan in Oslo, and still legible in the block sizes.',
     tips: 'Look for the height of the older stone houses: the king ordered brick and stone to stop the next fire.',
-    wiki: { en: 'Kvadraturen, Oslo', no: 'Kvadraturen' }
+    wiki: { en: 'Kvadraturen', no: 'Kvadraturen' }
   },
   {
     id: 'gamle-radhus',
@@ -177,7 +177,7 @@ TT.PLACES = [
     kind: 'building',
     blurb: 'The city\'s first purpose-built town hall, from 1641, later a theatre and now a restaurant. Small enough to remind you how small Christiania was.',
     tips: 'Nedre Slottsgate 1. The plaque is easy to miss above the door.',
-    wiki: { en: 'Oslo Old City Hall', no: 'Oslo gamle rådhus' }
+    wiki: { en: 'Gamle rådhus (Oslo)', no: 'Gamle rådhus (Oslo)' }
   },
   {
     id: 'domkirke',
@@ -201,7 +201,7 @@ TT.PLACES = [
     kind: 'market',
     blurb: 'Brick arcades curling around the cathedral, built in the mid-1800s to get the town\'s meat and fish trade off the open square and under cover. Oslo\'s first shopping centre, in effect.',
     tips: 'The arcade is a shortcut as well as a sight — walk through rather than around.',
-    wiki: { en: 'Basarhallene', no: 'Basarhallene' }
+    wiki: { en: 'Oslo Bazaars', no: 'Basarhallene' }
   },
   {
     id: 'stortorvet',
@@ -239,7 +239,7 @@ TT.PLACES = [
     kind: 'palace',
     blurb: 'Built 1824–1849 for a king who was born a French commoner and ended up ruling Norway and Sweden. The park around it was never fenced — anyone can walk right up to the front steps.',
     tips: 'Changing of the guard at 13:30 daily. Summer guided tours are the only way inside.',
-    wiki: { en: 'Royal Palace, Oslo', no: 'Det kongelige slott i Oslo' }
+    wiki: { en: 'Royal Palace, Oslo', no: 'Det kongelige slott' }
   },
   {
     id: 'karl-johan-statue',
@@ -251,7 +251,7 @@ TT.PLACES = [
     kind: 'statue',
     blurb: 'The king who gave the main street its name, cast in bronze on the palace forecourt and looking straight down it. The whole avenue is essentially a sightline built for him.',
     tips: 'Stand at the statue and look east — the Parliament is deliberately at the far end.',
-    wiki: { en: 'Charles XIV John', no: 'Karl Johan (statue)' }
+    wiki: { en: 'Charles XIV John', no: 'Karl III Johan' }
   },
   {
     id: 'stortinget',
@@ -287,7 +287,7 @@ TT.PLACES = [
     kind: 'building',
     blurb: 'Opened in 1899 with Ibsen and Bjørnson both alive to see it, and both installed in bronze outside — flanking the doors like guarantors.',
     tips: 'The two statues are the fastest introduction to Norwegian literature you will get.',
-    wiki: { en: 'National Theatre (Norway)', no: 'Nationaltheatret' }
+    wiki: { en: 'National Theatre (Oslo)', no: 'Nationaltheatret' }
   },
   {
     id: 'universitetsplassen',
@@ -323,7 +323,7 @@ TT.PLACES = [
     kind: 'museum',
     blurb: 'The apartment where Ibsen spent his last eleven years and died in 1906, restored to its colours. His study still has the desk facing away from the window.',
     tips: 'Arbins gate 1, a two-minute walk from the palace park. Entry by timed tour.',
-    wiki: { en: 'Ibsen Museum (Oslo)', no: 'Ibsenmuseet i Oslo' }
+    wiki: { en: 'Ibsen Museum (Oslo)', no: 'IBSEN Museum & Teater' }
   },
   {
     id: 'var-frelsers',
@@ -509,7 +509,7 @@ TT.PLACES = [
     kind: 'shop',
     blurb: 'One of the first American-style indoor malls dropped into a Nordic city centre, in 1988, on the edge of a district then considered rough. It changed what the area around the station was for.',
     tips: 'Worth two minutes as a period piece even if you buy nothing — late-80s retail architecture, largely intact.',
-    wiki: { en: 'Oslo City (shopping mall)', no: 'Oslo City' }
+    wiki: { en: 'Oslo City', no: 'Oslo City' }
   },
   {
     id: 'aker-brygge',
@@ -559,7 +559,7 @@ TT.PLACES = [
     kind: 'memorial',
     blurb: 'On 26 November 1942 more than five hundred Norwegian Jews were marched onto the ship Donau from this quay and sent to Auschwitz. Very few came back. A memorial marks the spot.',
     tips: 'Below the fortress on the harbour side. Quiet, exposed, and usually empty.',
-    wiki: { en: 'DS Donau', no: 'Donau (skip)' }
+    wiki: { en: 'DS Donau', no: 'DS «Donau»' }
   },
   {
     id: 'retterstedet',
@@ -693,7 +693,7 @@ TT.PLACES = [
     kind: 'memorial',
     blurb: 'On 22 July 2011 a bomb went off in the government quarter and 77 people were killed that day, most of them teenagers on an island outside the city. The memorial centre documents it plainly.',
     tips: 'Small, sober, and free. Allow more time than the size suggests.',
-    wiki: { en: '22 July Centre', no: '22. juli-senteret' }
+    wiki: { en: '22 July Information Centre', no: '22. juli-senteret' }
   },
   {
     id: 'vigelandsparken',
@@ -729,7 +729,11 @@ TT.PLACES = [
     kind: 'statue',
     blurb: 'A bronze tiger outside the central station, placed for the city\'s thousandth anniversary in 2000. The nickname "Tiger City" comes from a poem that meant it as an insult — a cold place that eats country people alive.',
     tips: 'The single most-photographed object in Oslo, and the default meeting point.',
-    wiki: { en: 'Tigeren', no: 'Tigeren (skulptur)' }
+    // Neither wiki has an article on the sculpture — Norwegian "Tigeren" is a
+    // redirect to the animal. Jernbanetorget, the square it sits on, is the
+    // nearest true article: the Norwegian title is the square itself, the
+    // English one redirects to the station beneath it.
+    wiki: { en: 'Jernbanetorget', no: 'Jernbanetorget (Oslo)' }
   },
   {
     id: 'freia-uret',
@@ -765,7 +769,9 @@ TT.PLACES = [
     kind: 'district',
     blurb: 'Two crooked lanes of small wooden houses from the early 1800s that survived every fire regulation and every developer. This is what most of the city looked like before brick.',
     tips: 'People live here. Walk quietly, and go on up to Old Aker Church at the top.',
-    wiki: { en: 'Damstredet', no: 'Damstredet' }
+    // Bare "Damstredet" on no.wikipedia is a disambiguation page for four towns,
+    // and English has no article at all — wiki.js falls back to the Norwegian one.
+    wiki: { en: 'Damstredet', no: 'Damstredet (Oslo)' }
   },
   {
     id: 'botanisk-hage',
@@ -777,7 +783,7 @@ TT.PLACES = [
     kind: 'park',
     blurb: 'Norway\'s oldest botanical garden, laid out on a manor estate given to the new university in 1814 — the same year the country got its constitution.',
     tips: 'Free entry, and the shortcut between Grønland and Tøyen that locals actually use.',
-    wiki: { en: 'Botanical Garden (Oslo)', no: 'Botanisk hage i Oslo' }
+    wiki: { en: 'University Botanical Garden (Oslo)', no: 'Botanisk hage (Oslo)' }
   }
 ];
 

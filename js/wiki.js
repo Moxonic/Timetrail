@@ -147,7 +147,97 @@ TT.wiki = (function () {
     return p;
   }
 
-  /* Best effort: try the curated title, then fall back to searching for the name. */
+  /* Section headings that are lists of links and citations rather than prose.
+   * Nothing in them is worth listening to — "External links" read aloud is a
+   * minute of URLs. Norwegian titles too, since the app reads either wiki. */
+  var SKIP_SECTION = new RegExp('^(' + [
+    'references?', 'notes?', 'citations?', 'sources?', 'bibliography',
+    'further reading', 'external links?', 'see also', 'gallery', 'footnotes?',
+    'works cited', 'other sources', 'notes and references',
+    'referanser', 'noter', 'kilder', 'litteratur', 'eksterne lenker',
+    'se også', 'galleri', 'fotnoter'
+  ].join('|') + ')$', 'i');
+
+  /* Plain-text extracts mark headings as "== History ==", one "=" deeper per
+   * level, so an article can be cut into chapters without parsing any HTML. */
+  function parseArticle(text) {
+    var lead = [];
+    var sections = [];
+    var cur = null;
+    var skipLevel = 0;            // >0 while inside a section we are dropping
+
+    String(text || '').split('\n').forEach(function (line) {
+      var m = /^(={2,6})\s*(.+?)\s*\1$/.exec(line.trim());
+      if (m) {
+        var level = m[1].length;
+        // A dropped heading takes its subsections with it.
+        if (skipLevel && level > skipLevel) return;
+        skipLevel = 0;
+        if (SKIP_SECTION.test(m[2])) { skipLevel = level; cur = null; return; }
+        cur = { level: level, title: m[2], lines: [] };
+        sections.push(cur);
+        return;
+      }
+      if (skipLevel) return;
+      (cur ? cur.lines : lead).push(line);
+    });
+
+    function body(lines) { return lines.join('\n').replace(/\n{2,}/g, '\n').trim(); }
+
+    return {
+      lead: body(lead),
+      // A heading with no prose of its own is kept rather than dropped: it is a
+      // real chapter in the article's shape, and jumping to it then starts at
+      // its first subsection, which is what a reader expects it to do.
+      sections: sections.map(function (sec) {
+        return { level: sec.level, title: sec.title, text: body(sec.lines) };
+      })
+    };
+  }
+
+  /* The whole article as chapters: the lead, then one entry per heading. This is
+   * what makes an article listenable end to end rather than a blurb, and it is
+   * a single request — the same payload serves the chapter list and the reading. */
+  function article(title, lang) {
+    lang = lang || 'en';
+    if (!title) return Promise.resolve(null);
+    var key = 'art:' + lang + ':' + title;
+    var hit = cached(key);
+    if (hit) return hit;
+
+    var p = api(lang, {
+      action: 'query', prop: 'extracts', explaintext: 1,
+      redirects: 1, titles: title
+    }).then(function (j) {
+      var pages = (j.query && j.query.pages) || {};
+      var page = Object.keys(pages).map(function (k) { return pages[k]; })[0];
+      if (!page || !page.extract) return store(key, null);
+      var parsed = parseArticle(page.extract);
+      if (!parsed.lead && !parsed.sections.length) return store(key, null);
+      parsed.title = page.title || title;
+      parsed.lang = lang;
+      return store(key, parsed);
+    }).catch(function () { return null; });
+
+    mem[key] = p;
+    return p;
+  }
+
+  /* The city's other language, for when a place is written up in only one. */
+  function otherLang(lang) {
+    var langs = (TT.CITY && TT.CITY.langs) || ['en', 'no'];
+    for (var i = 0; i < langs.length; i++) {
+      if (langs[i] !== lang) return langs[i];
+    }
+    return null;
+  }
+
+  /* Best effort: the curated title, then a search for the name, then the other
+   * language. Several Oslo places — Damstredet, Vulkan, Glasmagasinet — are
+   * written up on no.wikipedia and nowhere else, and a place with a picture and
+   * an article to listen to in the "wrong" language beats a blank one. The
+   * result carries its own `lang`, so callers narrate it in the voice it was
+   * actually written in rather than assuming the interface language. */
   function lookup(place, lang) {
     lang = lang || 'en';
     var title = place.wiki && place.wiki[lang];
@@ -161,6 +251,73 @@ TT.wiki = (function () {
           return (alt && alt.extract) ? Object.assign(alt, { viaSearch: true }) : res;
         });
       });
+    }).then(function (res) {
+      if (res && res.extract) return res;
+      var alt = otherLang(lang);
+      var altTitle = alt && place.wiki && place.wiki[alt];
+      if (!altTitle) return res;
+      return summary(altTitle, alt).then(function (x) {
+        return (x && x.extract) ? Object.assign(x, { viaLang: lang }) : res;
+      });
+    });
+  }
+
+  /* Lead images for a whole screenful of places at once.
+   *
+   * Every curated pin wants a picture, and one request per pin would be sixty.
+   * The API takes fifty titles a call, so a full map is one or two. Resolves to
+   * a { requested title -> url or null } map; null is cached like any answer,
+   * because "this place has no picture" stays true and should not be re-asked
+   * on every pan. */
+  function thumbs(titles, lang) {
+    lang = lang || 'en';
+    var uniq = [];
+    (titles || []).forEach(function (t) {
+      if (t && uniq.indexOf(t) === -1) uniq.push(t);
+    });
+
+    var out = {};
+    var misses = [];
+    var waits = [];
+
+    uniq.forEach(function (t) {
+      var hit = cached('thumb:' + lang + ':' + t);
+      if (hit) waits.push(hit.then(function (v) { out[t] = v || null; }));
+      else misses.push(t);
+    });
+
+    for (var i = 0; i < misses.length; i += 50) {
+      waits.push(thumbBatch(misses.slice(i, i + 50), lang, out));
+    }
+    return Promise.all(waits).then(function () { return out; });
+  }
+
+  function thumbBatch(batch, lang, out) {
+    return api(lang, {
+      action: 'query', prop: 'pageimages', piprop: 'thumbnail',
+      // Big enough for the largest a pin ever draws on a 3x screen.
+      pithumbsize: 240, redirects: 1, titles: batch.join('|')
+    }).then(function (j) {
+      var q = j.query || {};
+      var pages = q.pages || {};
+      // A redirect or a normalised title means the page comes back filed under
+      // a name we did not ask for, so follow the hops before matching it up.
+      var hop = {};
+      (q.normalized || []).concat(q.redirects || []).forEach(function (h) { hop[h.from] = h.to; });
+      var byTitle = {};
+      Object.keys(pages).forEach(function (k) { byTitle[pages[k].title] = pages[k]; });
+
+      batch.forEach(function (t) {
+        var seen = {}, cur = t;
+        while (hop[cur] && !seen[cur]) { seen[cur] = 1; cur = hop[cur]; }
+        var pg = byTitle[cur];
+        var url = (pg && pg.thumbnail && pg.thumbnail.source) || null;
+        out[t] = url;
+        store('thumb:' + lang + ':' + t, url);
+      });
+    }).catch(function () {
+      // A failed request is not an answer — leave it uncached so a later pan retries.
+      batch.forEach(function (t) { out[t] = null; });
     });
   }
 
@@ -221,8 +378,11 @@ TT.wiki = (function () {
   return {
     summary: summary,
     intro: intro,
+    article: article,
+
     search: search,
     lookup: lookup,
+    thumbs: thumbs,
     nearby: nearby,
     clearCache: function () {
       mem = {}; disk = {};

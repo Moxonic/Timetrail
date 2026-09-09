@@ -37,6 +37,10 @@
 
 * { box-sizing: border-box; }
 
+/* The app hides things with the hidden attribute, but any author display rule
+   silently outranks the browser's own [hidden] styling. Make it stick. */
+[hidden] { display: none !important; }
+
 html, body {
   height: 100%;
   margin: 0;
@@ -115,6 +119,36 @@ a { color: var(--accent); }
   text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
 }
 .tt-pin:hover { transform: rotate(-45deg) scale(1.18); }
+/* Like the wiki wrapper: a fixed square that centres whatever it holds, so a
+   photo pin bigger than the 30px icon box still sits on its own coordinate. */
+.tt-pin-wrap-place { display: flex; align-items: center; justify-content: center; }
+/* A curated pin wearing its Wikipedia lead image. The pin is rotated -45deg to
+   point the teardrop downwards, so the picture is counter-rotated to sit level
+   and oversized by root-2 to still cover the frame corner to corner. The era
+   colour moves to the border: it is what ties a pin to the period filter, and a
+   photograph alone would lose it. */
+.tt-pin.has-photo {
+  position: relative;
+  flex: none;                 /* the wrapper is flex; without this it shrinks */
+  width: var(--place-pin, 26px); height: var(--place-pin, 26px);
+  overflow: hidden;
+  background: var(--panel-2);
+  border-color: var(--pin, #888);
+  border-width: 3px;
+  transition: width .18s ease, height .18s ease,
+              transform .15s ease, box-shadow .15s ease;
+}
+.tt-pin.has-photo img {
+  position: absolute;
+  /* Rotating a square by 45deg needs it root-2 (142%) oversized to still cover
+     the box underneath. 150% buys a pixel of margin so subpixel rounding never
+     leaves a hairline of background showing at the corners. */
+  left: -25%; top: -25%; width: 150%; height: 150%;
+  transform: rotate(45deg);
+  object-fit: cover;
+  display: block;
+}
+.tt-pin.has-photo.is-visited { opacity: .5; }
 .tt-pin.is-visited { opacity: .45; filter: saturate(.35); }
 .tt-pin.is-ontrail { border-color: var(--accent); border-width: 3px; }
 .tt-pin.is-active {
@@ -139,12 +173,21 @@ a { color: var(--accent); }
 /* The wrapper is a fixed square and centres whatever it holds, so a picture pin
    that falls back to the "w" dot does not jump. */
 .tt-pin-wrap-wiki { display: flex; align-items: center; justify-content: center; }
+/* Diameter tracks the zoom level — see WIKI_PIN in js/map.js, which sets
+   --wiki-pin on the map container. The fallback keeps the old fixed size if
+   the property is ever missing. The wrapper stays 26px and centres its child,
+   so a pin wider than that overflows evenly and stays on its own coordinate. */
 .tt-pin-wiki.has-img {
-  width: 24px; height: 24px;
+  width: var(--wiki-pin, 24px); height: var(--wiki-pin, 24px);
+  /* The wrapper is a 26px flex box, so without this the pin is shrunk back to
+     26px wide while its height grows — a circle turning into an ellipse. */
+  flex: none;
   padding: 0; overflow: hidden;
   background: var(--panel-2);
   border: 1.5px solid rgba(255, 255, 255, .75);
   box-shadow: 0 2px 7px rgba(0, 0, 0, .5);
+  transition: width .18s ease, height .18s ease,
+              transform .15s ease, box-shadow .15s ease;
 }
 .tt-pin-wiki.has-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .tt-pin-wiki.has-img:hover { transform: scale(1.35); }
@@ -398,17 +441,6 @@ a { color: var(--accent); }
 .switch { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--text-dim); }
 .switch input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
 
-/* Voice picker, indented under the narration switch it belongs to. */
-.voice-row { display: flex; align-items: center; gap: 7px; margin: -2px 0 2px 23px; }
-.voice-select {
-  flex: 1; min-width: 0;
-  background: var(--panel-2); color: var(--text);
-  border: 1px solid var(--line); border-radius: 7px;
-  padding: 6px 8px; font: inherit; font-size: 12px; cursor: pointer;
-}
-.voice-select:hover { border-color: var(--accent); }
-.voice-row .btn { flex: none; }
-
 /* ---------- place list ---------- */
 .list-head {
   display: flex; align-items: baseline; justify-content: space-between;
@@ -550,7 +582,34 @@ h4.sec {
 h4.sec-alt { color: var(--me); }
 .sec-hint { margin-left: auto; font-size: 10px; text-transform: none; letter-spacing: 0; font-weight: 400; opacity: .75; }
 
+/* Chapter buttons under the article. Wrapping chips rather than a scrolling row:
+   a table of contents you can see all of is worth more than a tidy single line,
+   and these are pressed while walking, so they stay finger-sized. */
+.chapter-row { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 16px; }
+.chapter-chip {
+  font: inherit; font-size: 11.5px; text-align: left; cursor: pointer;
+  padding: 5px 10px; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text-dim);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chapter-chip:hover { border-color: var(--accent); color: var(--text); }
+.chapter-chip:active { transform: scale(.99); }
+/* Subsections read as children of the heading above them without indenting,
+   which wrapping chips cannot do honestly. */
+.chapter-chip.is-sub {
+  font-size: 11px; padding: 4px 9px;
+  background: none; border-style: dashed; color: var(--text-faint);
+}
+.chapter-chip.is-active {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+  font-weight: 600;
+}
+.chapter-chip.is-active::before { content: '▶ '; font-size: 9px; }
+/* Chapters in the player's popup, one level of indent for subsections. */
+.voice-opt.is-sub .vo-name { padding-left: 12px; opacity: .85; }
+
 .trail-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px; }
+
 .trail-chip {
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
   background: var(--panel-2); border: 1px solid var(--line);
@@ -633,6 +692,38 @@ h4.sec-alt { color: var(--me); }
   animation: rise .25s ease;
 }
 .player.is-paused { border-left-color: var(--text-faint); }
+/* Idle: the player is offering to read the selected place rather than reading. */
+.player.is-idle { border-left-color: var(--accent); }
+.player.is-idle .pbtn-main { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.player.is-idle .player-bar { visibility: hidden; }
+
+/* Voice menu, opened from the player and anchored above it. */
+.voice-menu {
+  position: absolute; right: 10px; bottom: calc(100% + 8px);
+  z-index: 2;
+  min-width: 262px; max-width: min(330px, 80vw);
+  max-height: 300px; overflow-y: auto; scrollbar-width: thin;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 5px;
+  animation: rise .15s ease;
+}
+.voice-menu::-webkit-scrollbar { width: 8px; }
+.voice-menu::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+.voice-menu-head {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--text-faint); padding: 6px 9px 4px;
+}
+.voice-opt {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  background: none; border: 0; border-radius: 7px;
+  padding: 7px 9px; cursor: pointer; text-align: left;
+  font: inherit; font-size: 12px; color: var(--text-dim);
+}
+.voice-opt:hover { background: var(--panel-2); color: var(--text); }
+.voice-opt.is-active { color: var(--me); font-weight: 600; }
+.voice-opt .vo-tick { flex: none; width: 12px; opacity: .9; }
+.voice-opt .vo-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pbtn {
   background: none; border: 1px solid var(--line); color: var(--text-dim);
   border-radius: 7px; width: 32px; height: 32px; flex: none;
@@ -652,8 +743,6 @@ h4.sec-alt { color: var(--me); }
   height: 3px; background: var(--line); border-radius: 2px; margin-top: 6px; overflow: hidden;
 }
 .player-fill { height: 100%; background: var(--me); border-radius: 2px; transition: width .3s ease; }
-.btn-listen { border-color: var(--me); color: var(--me); }
-.btn-listen:hover { background: var(--me); color: #10201e; }
 
 /* ---------- trivia ---------- */
 h4.sec-trivia { color: var(--accent); }

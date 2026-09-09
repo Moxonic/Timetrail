@@ -22,6 +22,45 @@
   function refreshMap() {
     var places = visiblePlaces();
     TT.map.renderPlaces(places, state().selected);
+    refreshPlaceThumbs(places);
+  }
+
+  /* Give every visible pin its Wikipedia lead image. Two batched requests cover
+   * a whole map, and the answers are cached for a day, so panning and filtering
+   * cost nothing after the first look.
+   *
+   * The second pass is for places written up in only one language: asking the
+   * other wiki is what gets Damstredet and Vulkan a picture in English. */
+  function refreshPlaceThumbs(places) {
+    var lang = state().lang;
+    var titleFor = function (p, l) { return p.wiki && p.wiki[l]; };
+
+    TT.wiki.thumbs(places.map(function (p) { return titleFor(p, lang); }), lang)
+      .then(function (byTitle) {
+        var byId = {};
+        places.forEach(function (p) {
+          var t = titleFor(p, lang);
+          if (t && byTitle[t]) byId[p.id] = byTitle[t];
+        });
+        TT.map.setPlaceThumbs(byId);
+
+        var alt = lang === 'no' ? 'en' : 'no';
+        var missing = places.filter(function (p) {
+          return !byId[p.id] && titleFor(p, alt);
+        });
+        if (!missing.length) return;
+
+        return TT.wiki.thumbs(missing.map(function (p) { return titleFor(p, alt); }), alt)
+          .then(function (altTitles) {
+            var altById = {};
+            missing.forEach(function (p) {
+              var t = titleFor(p, alt);
+              if (t && altTitles[t]) altById[p.id] = altTitles[t];
+            });
+            TT.map.setPlaceThumbs(altById);
+          });
+      })
+      .catch(function () { /* pins keep their glyphs */ });
   }
 
   function refreshList() {
@@ -86,6 +125,10 @@
       kind: kind,
       wikiLoading: true,
       wiki: null,
+      // The article's chapters, once fetched: what the chapter buttons list and
+      // what a full listen reads. Null while loading, false if there are none.
+      article: null,
+
       next: next,
       switches: kind === 'curated'
         ? TT.recommendSwitch(place, {
@@ -119,6 +162,9 @@
 
     currentModel = buildModel(place, kind);
     TT.ui.renderDetail(currentModel);
+    // The player's play button is now the Listen button, so tell it what it
+    // would be reading.
+    TT.ui.setListenTarget(place);
 
     var lang = state().lang;
     var p = isWiki
@@ -131,6 +177,17 @@
       currentModel.wiki = res;
       currentModel.wikiLoading = false;
       TT.ui.renderDetail(currentModel);
+
+      // Then the chapters. The title comes from the resolved summary rather than
+      // the curated one, because lookup() may have recovered the page by search
+      // and the chapter list has to belong to the page shown above it.
+      var found = res && res.title;
+      if (!found) { currentModel.article = false; return; }
+      TT.wiki.article(found, res.lang || lang).then(function (art) {
+        if (!currentModel || currentModel.place !== place) return;
+        currentModel.article = art || false;
+        TT.ui.renderDetail(currentModel);
+      });
     });
 
     // Seeing the detail page counts as arriving, when you are actually there.
@@ -276,12 +333,18 @@
   /* ---------- spoken guide ---------- */
 
   /* Assemble the script for a place and speak it. `mode` is 'play' to start
-   * immediately, or 'queue' to fall in behind whatever is being read. */
-  function narrate(place, mode) {
+   * immediately, or 'queue' to fall in behind whatever is being read.
+   * `opts.chapter` starts partway into the article, at that chapter.
+   *
+   * The two modes deliberately read different amounts. Walking past somewhere is
+   * worth a paragraph, so the hands-free tour still gets the lead only. Pressing
+   * Listen is a decision to stay, so it gets the whole article, in chapters. */
+  function narrate(place, mode, opts) {
+    opts = opts || {};
     var s = state();
     var lang = s.lang;
     var isWiki = !place.eras;
-    var id = isWiki ? place.id : place.id;
+    var id = place.id;
 
     if (!TT.audio.supported()) {
       TT.ui.toast('This browser cannot read pages aloud.');
@@ -293,23 +356,78 @@
         : 'No speech voice found on this device.');
     }
 
-    // Prefer the full lead section: the short summary makes for a thin listen.
-    var title = isWiki ? place.title : (place.wiki && place.wiki[lang]);
-    var fetchText = title
-      ? TT.wiki.intro(title, lang).then(function (long) {
-          if (long) return { extract: long };
-          return isWiki ? TT.wiki.summary(place.title, lang) : TT.wiki.lookup(place, lang);
-        })
-      : (isWiki ? Promise.resolve(null) : TT.wiki.lookup(place, lang));
+    // Already reading this place: a chapter press is a seek within it, not a
+    // restart — the article does not have to be fetched or re-chunked.
+    if (opts.chapter != null && TT.audio.status().id === id &&
+        TT.audio.seekChapter(opts.chapter)) {
+      return Promise.resolve(true);
+    }
 
-    return fetchText.then(function (wiki) {
-      var script = TT.narrationFor(place, wiki, {
-        trivia: state().trivia,
-        allTrivia: state().trivia && mode === 'play'
+    var title = isWiki ? place.title : (place.wiki && place.wiki[lang]);
+
+    if (mode === 'queue') {
+      var fetchLead = title
+        ? TT.wiki.intro(title, lang).then(function (long) {
+            if (long) return { extract: long };
+            return isWiki ? TT.wiki.summary(place.title, lang) : TT.wiki.lookup(place, lang);
+          })
+        : (isWiki ? Promise.resolve(null) : TT.wiki.lookup(place, lang));
+
+      return fetchLead.then(function (wiki) {
+        narrated[id] = true;
+        return TT.audio.enqueue({
+          id: id, title: place.name || place.title, lang: lang,
+          text: TT.narrationFor(place, wiki, { trivia: state().trivia })
+        });
       });
-      narrated[id] = true;
-      var item = { id: id, title: place.name || place.title, text: script, lang: lang };
-      return mode === 'queue' ? TT.audio.enqueue(item) : TT.audio.play(item);
+    }
+
+    // The detail view has usually fetched the article already; reuse it so
+    // pressing a chapter button is instant rather than a round trip.
+    var open = currentModel && currentModel.place === place;
+    var fetchArticle = (open && currentModel.article)
+      ? Promise.resolve(currentModel.article)
+      : (title ? TT.wiki.article(title, lang) : Promise.resolve(null));
+
+    // A curated title that resolves to nothing still deserves a full reading:
+    // lookup() searches, and then tries the other language, so ask it for the
+    // real page and read that. Without this the four Oslo places that exist
+    // only on no.wikipedia fall back to a two-sentence summary.
+    if (!isWiki) {
+      fetchArticle = fetchArticle.then(function (art) {
+        if (art) return art;
+        return TT.wiki.lookup(place, lang).then(function (res) {
+          return (res && res.title)
+            ? TT.wiki.article(res.title, res.lang || lang)
+            : null;
+        });
+      });
+    }
+
+    return fetchArticle.then(function (art) {
+      // Without an article there are no chapters, and the opening has to carry
+      // the whole reading — so fall back to the summary for its text.
+      var fetchWiki = art
+        ? Promise.resolve(open ? currentModel.wiki : null)
+        : (isWiki ? TT.wiki.summary(place.title, lang) : TT.wiki.lookup(place, lang));
+
+      return fetchWiki.then(function (wiki) {
+        var parts = TT.narrationParts(place, art || null, wiki, {
+          lang: lang, trivia: state().trivia
+        });
+        if (!parts.length) {
+          TT.ui.toast('Nothing to read aloud for this one.');
+          return false;
+        }
+        narrated[id] = true;
+        return TT.audio.play({
+          id: id, title: place.name || place.title,
+          // An article recovered from the other wiki is read by that language's
+          // voice — an English voice reading Norwegian is unintelligible.
+          lang: (art && art.lang) || (wiki && wiki.lang) || lang,
+          parts: parts, startChapter: opts.chapter || 0
+        });
+      });
     });
   }
 
@@ -528,16 +646,25 @@
         TT.ui.setTab('discover');
         TT.ui.toast('Following ' + TT.themeById(themeId).name.toLowerCase() + ' across every period.');
       },
-      onListen: function (place) { narrate(place, 'play'); },
+      // The player's play button, pressed while nothing is being read.
+      onListen: function () {
+        if (currentModel) narrate(currentModel.place, 'play');
+      },
+      // A chapter button, in the article or in the player's chapter menu.
+      onListenChapter: function (n) {
+        if (currentModel) narrate(currentModel.place, 'play', { chapter: n });
+      },
+
       onVoicePick: function (uri) {
         var prefs = Object.assign({}, state().voicePrefs);
         if (uri) prefs[state().lang] = uri; else delete prefs[state().lang];
         store.set({ voicePrefs: prefs }, 'audio');
         TT.audio.setVoice(prefs);
-        // Choosing a voice is a request to hear it.
-        previewVoice();
+        TT.ui.setVoiceState(state().lang, uri);
+        // Changing the voice mid-sentence re-speaks it in the new one, which is
+        // the demonstration. Otherwise play a line chosen to show a voice off.
+        if (!TT.audio.status().playing) previewVoice();
       },
-      onVoicePreview: previewVoice,
       onNarrateToggle: function (on) {
         store.set({ autoNarrate: on }, 'audio');
         if (!on) {
@@ -572,7 +699,7 @@
         store.set({ lang: next }, 'lang');
         TT.ui.setLang(next);
         wikiCache = [];
-        TT.ui.renderVoicePicker(next, state().voicePrefs[next]);
+        TT.ui.setVoiceState(next, state().voicePrefs[next]);
         refreshWiki();
         if (currentModel) select(state().selected, 'lang');
         TT.ui.toast(next === 'no' ? 'Reading Norwegian Wikipedia.' : 'Reading English Wikipedia.');
@@ -595,14 +722,12 @@
     TT.ui.dom().narrateToggle.checked = false;
     store.set({ autoNarrate: false }, 'audio');
 
-    TT.audio.subscribe(function (st) {
-      TT.ui.renderPlayer(st);
-      // Voices arrive asynchronously in Chrome, so the picker fills in late.
-      TT.ui.renderVoicePicker(state().lang, state().voicePrefs[state().lang]);
-    });
+    TT.audio.subscribe(function (st) { TT.ui.renderPlayer(st); });
     TT.audio.setVoice(s.voicePrefs || {});
     TT.audio.setRate(s.speechRate || 1);
-    TT.ui.renderVoicePicker(s.lang, (s.voicePrefs || {})[s.lang]);
+    // The menu reads the voice list when it opens, so late-arriving voices need
+    // no retries here — only which language and choice it should show.
+    TT.ui.setVoiceState(s.lang, (s.voicePrefs || {})[s.lang]);
 
     TT.map.init({
       center: s.center || TT.CITY.center,

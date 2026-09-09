@@ -6,19 +6,28 @@ TT.map = (function () {
   var map = null;
   var layers = {};
   var markers = {};        // place id -> marker (curated)
+  var placeThumbs = {};    // place id -> lead image url, once Wikipedia answers
   var wikiMarkers = {};    // wiki id  -> marker
   var meMarker = null, meCircle = null;
   var routeLine = null;
   var onSelect = function () {};
 
+  // CARTO's old anonymous basemap.cartocdn.com tiles now return a 200 with a
+  // "API KEY REQUIRED" watermark baked into the image instead of a map — they
+  // started gating the free tier behind a signup. Esri's Canvas basemaps are
+  // still genuinely free and keyless: no account, no rate-limit wall, and a
+  // light/dark pair that matches CARTO's old look closely enough that nothing
+  // else about the map needs to change. Real detail tops out around zoom 17;
+  // past that Esri serves a placeholder tile, which is well past anything this
+  // app's own pin-scaling ramp (zoom 14–18) asks for in practice.
   var TILES = {
     dark: {
-      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+      url: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      attribution: 'Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, and the GIS user community'
     },
     light: {
-      url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+      url: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      attribution: 'Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, and the GIS user community'
     }
   };
   var tileLayer = null;
@@ -33,22 +42,58 @@ TT.map = (function () {
     return byKind[place.kind] || '◈';
   }
 
+  /* A curated pin wears its Wikipedia lead image once we have one, and its era
+   * glyph until then — or for good, if the article has no picture. The era
+   * colour stays as the border either way, because that is what ties a pin to
+   * the period filter; a photo alone would lose it. Built as DOM rather than a
+   * markup string so a thumbnail that 404s can quietly become the glyph again. */
   function iconFor(place, opts) {
     opts = opts || {};
     var era = TT.primaryEra(place);
-    var visited = TT.store.isVisited(place.id);
-    var cls = 'tt-pin' +
-      (visited ? ' is-visited' : '') +
-      (opts.active ? ' is-active' : '') +
-      (opts.onTrail ? ' is-ontrail' : '');
+    var pin = TT.el('span.tt-pin');
+    // Custom properties need setProperty — assigning to style does nothing.
+    pin.style.setProperty('--pin', era.color);
+    if (TT.store.isVisited(place.id)) pin.classList.add('is-visited');
+    if (opts.active) pin.classList.add('is-active');
+    if (opts.onTrail) pin.classList.add('is-ontrail');
+
+    function asGlyph() {
+      TT.clear(pin);
+      pin.classList.remove('has-photo');
+      pin.appendChild(TT.el('i', { text: glyphFor(place) }));
+    }
+
+    if (opts.thumb) {
+      pin.classList.add('has-photo');
+      pin.appendChild(TT.el('img', {
+        src: opts.thumb, alt: '', loading: 'lazy', decoding: 'async', onerror: asGlyph
+      }));
+    } else {
+      asGlyph();
+    }
+
     return L.divIcon({
-      className: 'tt-pin-wrap',
-      html: '<span class="' + cls + '" style="--pin:' + era.color + '">' +
-            '<i>' + glyphFor(place) + '</i></span>',
+      className: 'tt-pin-wrap tt-pin-wrap-place',
+      html: pin,
       iconSize: [30, 30],
       iconAnchor: [15, 15],
       popupAnchor: [0, -14]
     });
+  }
+
+  /* Everything needed to draw one curated pin in its current state, in one
+   * place so renderPlaces, setActive and setPlaceThumbs cannot drift apart. */
+  function pinOpts(place, activeId, trail) {
+    return {
+      active: place.id === activeId,
+      onTrail: !!(trail && trail.stops.indexOf(place.id) !== -1),
+      thumb: placeThumbs[place.id]
+    };
+  }
+
+  function activeTrail() {
+    var st = TT.store.get();
+    return st.trail ? TT.trailById(st.trail) : null;
   }
 
   /* Wikipedia markers wear the article's lead image, so a screenful of them
@@ -78,6 +123,25 @@ TT.map = (function () {
     });
   }
 
+  /* Picture pins grow as you zoom in: at street level the photograph is the
+   * point of the pin, while at city level the same size would just be clutter.
+   * Driven by a custom property on the map container rather than by rebuilding
+   * the icons, because a rebuild re-requests every thumbnail and throws away
+   * the has-img/fallback-to-dot state each one has already settled into. */
+  var PIN_ZOOM = { from: 14, to: 18 };
+  var WIKI_PIN = { minPx: 24, maxPx: 48 };    // live Wikipedia finds
+  var PLACE_PIN = { minPx: 26, maxPx: 52 };   // curated sights, a shade larger
+
+  function applyPinScale() {
+    if (!map) return;
+    var t = (map.getZoom() - PIN_ZOOM.from) / (PIN_ZOOM.to - PIN_ZOOM.from);
+    t = Math.max(0, Math.min(1, t));
+    var css = map.getContainer().style;
+    var at = function (c) { return (c.minPx + (c.maxPx - c.minPx) * t).toFixed(1) + 'px'; };
+    css.setProperty('--wiki-pin', at(WIKI_PIN));
+    css.setProperty('--place-pin', at(PLACE_PIN));
+  }
+
   function init(opts) {
     onSelect = opts.onSelect || onSelect;
 
@@ -103,6 +167,9 @@ TT.map = (function () {
       TT.store.set({ center: { lat: c.lat, lng: c.lng }, zoom: map.getZoom() }, 'map');
     });
 
+    map.on('zoomend', applyPinScale);
+    applyPinScale();
+
     return map;
   }
 
@@ -111,8 +178,12 @@ TT.map = (function () {
     if (tileLayer) map.removeLayer(tileLayer);
     tileLayer = L.tileLayer(conf.url, {
       attribution: conf.attribution,
-      subdomains: 'abcd',
-      maxZoom: 20
+      // Leaflet still lets the app zoom to 20 (maxZoom) — it just reuses the
+      // sharpest real tile (maxNativeZoom) and scales it up, rather than
+      // requesting from Esri past the point where they do the same thing
+      // server-side and hand back a "Map data not yet available" tile.
+      maxZoom: 20,
+      maxNativeZoom: 17
     });
     tileLayer.addTo(map);
     tileLayer.bringToBack();
@@ -127,10 +198,7 @@ TT.map = (function () {
 
     places.forEach(function (p) {
       var m = L.marker([p.lat, p.lng], {
-        icon: iconFor(p, {
-          active: p.id === activeId,
-          onTrail: trail && trail.stops.indexOf(p.id) !== -1
-        }),
+        icon: iconFor(p, pinOpts(p, activeId, trail)),
         title: p.name,
         riseOnHover: true,
         keyboard: true,
@@ -219,15 +287,32 @@ TT.map = (function () {
   function clearSpots() { layers.spots.clearLayers(); }
 
   function setActive(id) {
+    var trail = activeTrail();
     Object.keys(markers).forEach(function (pid) {
       var p = TT.placeById(pid);
       if (!p) return;
-      var state = TT.store.get();
-      var trail = state.trail ? TT.trailById(state.trail) : null;
-      markers[pid].setIcon(iconFor(p, {
-        active: pid === id,
-        onTrail: trail && trail.stops.indexOf(pid) !== -1
-      }));
+      markers[pid].setIcon(iconFor(p, pinOpts(p, id, trail)));
+    });
+  }
+
+  /* Thumbnails arrive after the pins are already on the map, so redraw the ones
+   * that just gained a picture — and only those, since re-iconing a marker
+   * throws away its DOM and would restart every image on the map. */
+  function setPlaceThumbs(byId) {
+    var changed = [];
+    Object.keys(byId || {}).forEach(function (id) {
+      if (byId[id] && placeThumbs[id] !== byId[id]) {
+        placeThumbs[id] = byId[id];
+        if (markers[id]) changed.push(id);
+      }
+    });
+    if (!changed.length) return;
+
+    var selected = TT.store.get().selected;
+    var trail = activeTrail();
+    changed.forEach(function (id) {
+      var p = TT.placeById(id);
+      if (p) markers[id].setIcon(iconFor(p, pinOpts(p, selected, trail)));
     });
   }
 
@@ -295,7 +380,7 @@ TT.map = (function () {
     renderPlaces: renderPlaces, renderWiki: renderWiki, clearWiki: clearWiki,
     renderRoute: renderRoute, clearRoute: clearRoute,
     renderSpots: renderSpots, clearSpots: clearSpots,
-    setActive: setActive, focus: focus, fit: fit,
+    setActive: setActive, setPlaceThumbs: setPlaceThumbs, focus: focus, fit: fit,
     showMe: showMe, hideMe: hideMe, toggleWikiLayer: toggleWikiLayer,
     invalidate: invalidate, getCenter: getCenter, getRadius: getRadius,
     raw: function () { return map; }
